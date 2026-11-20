@@ -1,3 +1,4 @@
+
 plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
@@ -8,7 +9,6 @@ android {
     compileSdk 34
 
     defaultConfig {
-        // Keep the original package ID so this remains the same app.
         applicationId "com.custom.reklamoid"
         minSdk 21
         targetSdk 30
