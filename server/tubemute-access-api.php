@@ -47,33 +47,36 @@ final class TubeMute_Access_API {
         $cached = get_transient('tubemute_users_list_v1');
         if (is_string($cached)) { return $cached; }
 
-        // TubeMute repository is private. The token is stored only in WordPress,
-        // never in the Android APK.
+        // Public repository mode: no GitHub token is required.
+        // If the repository is made private later, configure a read-only token below.
         $token = trim((string)get_option('tubemute_github_token', ''));
-        if ($token === '') {
-            return new WP_Error('github_token_missing', 'Administrator must configure the GitHub read token in TubeMute Access settings.', ['status' => 503]);
+        if ($token !== '') {
+            $response = wp_remote_get('https://api.github.com/repos/portallcomua/TubeMute/contents/users.txt?ref=main', [
+                'timeout' => 12,
+                'headers' => [
+                    'Authorization' => 'Bearer ' . $token,
+                    'Accept' => 'application/vnd.github+json',
+                    'X-GitHub-Api-Version' => '2022-11-28',
+                    'User-Agent' => 'TubeMute-WordPress-Access',
+                ],
+            ]);
+            if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) {
+                return new WP_Error('license_source_unavailable', 'Could not read users.txt from GitHub.', ['status' => 503]);
+            }
+            $json = json_decode(wp_remote_retrieve_body($response), true);
+            $body = is_array($json) && !empty($json['content'])
+                ? base64_decode(preg_replace('/\\s+/', '', $json['content']), true)
+                : false;
+        } else {
+            $response = wp_remote_get(self::USERS_URL, ['timeout' => 8, 'redirection' => 2]);
+            if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) {
+                return new WP_Error('license_source_unavailable', 'License list is temporarily unavailable.', ['status' => 503]);
+            }
+            $body = wp_remote_retrieve_body($response);
         }
 
-        $api_url = 'https://api.github.com/repos/portallcomua/TubeMute/contents/users.txt?ref=main';
-        $response = wp_remote_get($api_url, [
-            'timeout' => 12,
-            'headers' => [
-                'Authorization' => 'Bearer ' . $token,
-                'Accept' => 'application/vnd.github+json',
-                'X-GitHub-Api-Version' => '2022-11-28',
-                'User-Agent' => 'TubeMute-WordPress-Access',
-            ],
-        ]);
-        if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) {
-            return new WP_Error('license_source_unavailable', 'Could not read private users.txt from GitHub. Check the token permissions.', ['status' => 503]);
-        }
-        $json = json_decode(wp_remote_retrieve_body($response), true);
-        if (!is_array($json) || empty($json['content'])) {
-            return new WP_Error('license_file_invalid', 'GitHub users.txt response is invalid.', ['status' => 503]);
-        }
-        $body = base64_decode(preg_replace('/\\s+/', '', $json['content']), true);
         if (!is_string($body)) {
-            return new WP_Error('license_file_invalid', 'Could not decode users.txt from GitHub.', ['status' => 503]);
+            return new WP_Error('license_file_invalid', 'Could not read users.txt.', ['status' => 503]);
         }
         set_transient('tubemute_users_list_v1', $body, 60);
         return $body;
