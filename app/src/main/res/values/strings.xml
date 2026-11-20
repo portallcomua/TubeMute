@@ -1,16 +1,24 @@
 <resources>
     <string name="app_name">TubeMute</string>
     <string name="reg_title">Activate TubeMute</string>
-    <string name="reg_message">Enter your Gmail address to activate 7 days of free access.</string>
+    <string name="reg_message">Enter your Gmail address to start your 7-day free trial.</string>
     <string name="reg_hint">yourname@gmail.com</string>
     <string name="btn_continue">Continue</string>
     <string name="btn_exit">Exit</string>
-    <string name="btn_change_email">Change email</string>
-    <string name="err_invalid_email">Please enter a valid Gmail address.</string>
+    <string name="err_invalid_email">Enter a valid Gmail address.</string>
     <string name="checking_access">Checking access...</string>
-    <string name="trial_started">Your 7-day free trial has started!</string>
-    <string name="trial_days_left">Free trial active. Days left: %1$d</string>
-    <string name="vip_active">Subscription active: %1$s</string>
-    <string name="paywall_title">Trial period expired</string>
-    <string name="paywall_message">Your free trial has ended.\nTo continue for one year (299 UAH), make a payment and send your Gmail address (%1$s) to Telegram: @your_nick</string>
+    <string name="trial_started">Your 7-day free trial has started.</string>
+    <string name="trial_days_left">Free trial. Days remaining: %1$d</string>
+    <string name="access_activated">Access activated.</string>
+    <string name="paywall_title">Trial period ended</string>
+    <string name="paywall_message">To continue using TubeMute for one year (299 UAH), press Pay. Access will be enabled immediately. IMPORTANT: include this Gmail address in your payment details, or access may be revoked.</string>
+    <string name="btn_pay">Pay 299 UAH / year</string>
+    <string name="btn_copy_email">Copy Gmail</string>
+    <string name="btn_refresh">I have paid / Check access</string>
+    <string name="email_copied">Gmail copied.</string>
+    <string name="activating_access">Activating access...</string>
+    <string name="payment_link_error">Could not open the payment link.</string>
+    <string name="connection_error_title">Connection error</string>
+    <string name="connection_error_message">Could not verify access with the server. Check your internet connection and try again. %1$s</string>
+    <string name="btn_retry">Retry</string>
 </resources>
