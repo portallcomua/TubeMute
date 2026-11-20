@@ -1,0 +1,16 @@
+<resources>
+    <string name="app_name">Reklamoid</string>
+    <string name="reg_title">Registration</string>
+    <string name="reg_message">Enter your Email to activate 7 days of free access (no password needed):</string>
+    <string name="reg_hint">your.email@gmail.com</string>
+    <string name="btn_continue">Continue</string>
+    <string name="btn_exit">Exit</string>
+    <string name="btn_change_email">Change Email</string>
+    <string name="err_invalid_email">Please enter a valid Email!</string>
+    <string name="checking_access">Checking access…</string>
+    <string name="trial_started">7-day free trial activated!</string>
+    <string name="trial_days_left">Free trial active. Days left: %1$d</string>
+    <string name="vip_active">Subscription active until: %1$s</string>
+    <string name="paywall_title">Trial Period Expired</string>
+    <string name="paywall_message">Your 7-day free trial has ended.\nTo continue for 1 year (299 UAH), please make a payment and send your Email (%1$s) to Telegram: @your_nick</string>
+</resources>
