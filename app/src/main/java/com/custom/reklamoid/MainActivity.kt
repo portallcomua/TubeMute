@@ -241,3 +241,7 @@ class MainActivity : AppCompatActivity() {
         if (::webView.isInitialized && webView.canGoBack()) {
             webView.goBack()
         } else {
+super.onBackPressed()
+}
+}
+}
