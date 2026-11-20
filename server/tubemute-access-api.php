@@ -46,11 +46,35 @@ final class TubeMute_Access_API {
     private static function users_list() {
         $cached = get_transient('tubemute_users_list_v1');
         if (is_string($cached)) { return $cached; }
-        $response = wp_remote_get(self::USERS_URL, ['timeout' => 8, 'redirection' => 2]);
-        if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) {
-            return new WP_Error('license_source_unavailable', 'License list is temporarily unavailable.', ['status' => 503]);
+
+        // TubeMute repository is private. The token is stored only in WordPress,
+        // never in the Android APK.
+        $token = trim((string)get_option('tubemute_github_token', ''));
+        if ($token === '') {
+            return new WP_Error('github_token_missing', 'Administrator must configure the GitHub read token in TubeMute Access settings.', ['status' => 503]);
         }
-        $body = wp_remote_retrieve_body($response);
+
+        $api_url = 'https://api.github.com/repos/portallcomua/TubeMute/contents/users.txt?ref=main';
+        $response = wp_remote_get($api_url, [
+            'timeout' => 12,
+            'headers' => [
+                'Authorization' => 'Bearer ' . $token,
+                'Accept' => 'application/vnd.github+json',
+                'X-GitHub-Api-Version' => '2022-11-28',
+                'User-Agent' => 'TubeMute-WordPress-Access',
+            ],
+        ]);
+        if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) {
+            return new WP_Error('license_source_unavailable', 'Could not read private users.txt from GitHub. Check the token permissions.', ['status' => 503]);
+        }
+        $json = json_decode(wp_remote_retrieve_body($response), true);
+        if (!is_array($json) || empty($json['content'])) {
+            return new WP_Error('license_file_invalid', 'GitHub users.txt response is invalid.', ['status' => 503]);
+        }
+        $body = base64_decode(preg_replace('/\\s+/', '', $json['content']), true);
+        if (!is_string($body)) {
+            return new WP_Error('license_file_invalid', 'Could not decode users.txt from GitHub.', ['status' => 503]);
+        }
         set_transient('tubemute_users_list_v1', $body, 60);
         return $body;
     }
@@ -121,6 +145,14 @@ final class TubeMute_Access_API {
             ]);
         }
 
+        if (empty($record['expired_notice_sent'])) {
+            $subject = 'TubeMute: free trial ended';
+            $message = "Your 7-day TubeMute trial has ended.\\n\\nTo continue for one year, open: " . 'https://www.privat24.ua/send/k8l6z' . "\\n\\nIMPORTANT: include this Gmail address in the payment details: " . $email;
+            wp_mail($email, $subject, $message);
+            $devices[$device_hash]['expired_notice_sent'] = time();
+            update_option(self::OPTION_DEVICES, $devices, false);
+        }
+
         return rest_ensure_response(['status' => 'expired']);
     }
 
@@ -171,6 +203,14 @@ final class TubeMute_Access_API {
 
     public static function admin_page() {
         if (!current_user_can('manage_options')) { return; }
+        if (isset($_POST['tubemute_github_token']) && check_admin_referer('tubemute_settings_action')) {
+            $new_token = trim(sanitize_text_field(wp_unslash($_POST['tubemute_github_token'])));
+            if ($new_token !== '') {
+                update_option('tubemute_github_token', $new_token, false);
+                delete_transient('tubemute_users_list_v1');
+                echo '<div class="notice notice-success"><p>GitHub token saved.</p></div>';
+            }
+        }
         $temporary = get_option(self::OPTION_TEMP, []);
         if (isset($_POST['tubemute_revoke']) && check_admin_referer('tubemute_revoke_action')) {
             $key = sanitize_text_field(wp_unslash($_POST['tubemute_revoke']));
@@ -181,7 +221,15 @@ final class TubeMute_Access_API {
             }
         }
         $temporary = get_option(self::OPTION_TEMP, []);
-        echo '<div class="wrap"><h1>TubeMute temporary activations</h1>';
+        echo '<div class="wrap"><h1>TubeMute Access</h1>';
+        echo '<h2>Private GitHub users.txt access</h2>';
+        echo '<p>Create a fine-grained GitHub token with read-only Contents access to portallcomua/TubeMute. The token is stored on this WordPress site and is never sent to the app.</p>';
+        echo '<form method="post">';
+        wp_nonce_field('tubemute_settings_action');
+        echo '<input type="password" name="tubemute_github_token" value="" class="regular-text" autocomplete="new-password" placeholder="Paste GitHub read-only token">';
+        submit_button('Save GitHub token');
+        echo '</form>';
+        echo '<hr><h2>Temporary activations</h2>';
         echo '<p>When a user presses Pay, access is granted for one year. Check the incoming payment and revoke access here if it was not paid.</p>';
         echo '<table class="widefat striped"><thead><tr><th>Gmail</th><th>Activated</th><th>Expires</th><th>Action</th></tr></thead><tbody>';
         if (!$temporary) {
