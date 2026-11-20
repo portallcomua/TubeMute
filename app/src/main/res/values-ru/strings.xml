@@ -1,0 +1,16 @@
+<resources>
+    <string name="app_name">Рекламоед</string>
+    <string name="reg_title">Активация приложения</string>
+    <string name="reg_message">Введите ваш Gmail для активации 7 дней бесплатного просмотра (пароль не нужен):</string>
+    <string name="reg_hint">example@gmail.com</string>
+    <string name="btn_continue">Продолжить</string>
+    <string name="btn_exit">Выход</string>
+    <string name="btn_change_email">Изменить почту</string>
+    <string name="err_invalid_email">Введите корректный адрес Gmail!</string>
+    <string name="checking_access">Проверка доступа…</string>
+    <string name="trial_started">Активировано 7 дней бесплатного теста!</string>
+    <string name="trial_days_left">Пробный период. Осталось дней: %1$d</string>
+    <string name="vip_active">Подписка активна до: %1$s</string>
+    <string name="paywall_title">Пробный период завершен</string>
+    <string name="paywall_message">Ваши 7 бесплатных дней закончились.\nДля продления на 1 год (299 грн) оплатите подписку и укажите ваш Gmail (%1$s).\nКонтакт для связи: Telegram @ваш_ник</string>
+</resources>
