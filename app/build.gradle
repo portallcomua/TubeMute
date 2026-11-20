@@ -8,11 +8,12 @@ android {
     compileSdk 34
 
     defaultConfig {
-        applicationId "com.tubemute.tv.player"
+        // Keep the original package ID so this remains the same app.
+        applicationId "com.custom.reklamoid"
         minSdk 21
         targetSdk 30
-        versionCode 2
-        versionName "1.1"
+        versionCode 4
+        versionName "1.0.3"
     }
 
     lint {
@@ -20,28 +21,21 @@ android {
         abortOnError false
     }
 
-    signingConfigs {
-        release {
-            storeFile file("release.keystore")
-            storePassword "android"
-            keyAlias "tubemute"
-            keyPassword "android"
-            v1SigningEnabled true
-            v2SigningEnabled true
-        }
-    }
-
     buildTypes {
+        debug {
+            minifyEnabled false
+        }
         release {
-            signingConfig signingConfigs.release
             minifyEnabled false
             shrinkResources false
         }
     }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+
     kotlinOptions {
         jvmTarget = '17'
     }
