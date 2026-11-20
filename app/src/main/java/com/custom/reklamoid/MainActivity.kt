@@ -25,10 +25,10 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
 
-    // 1. ВСТАВТЕ СЮДИ RAW-ПОСИЛАННЯ НА ВАШ ФАЙЛ users.txt З РЕПОЗИТОРІЮ:
+    // ВСТАВТЕ СЮДИ RAW-ПОСИЛАННЯ НА ВАШ ФАЙЛ users.txt:
     private val USERS_DB_URL = "https://githubusercontent.com"
 
-    // 2. ПОСИЛАННЯ ДЛЯ АВТО-ВІДПРАВКИ ЛИСТІВ (підключите пізніше через Google Script або Formspree):
+    // ПОСИЛАННЯ ДЛЯ АВТО-ВІДПРАВКИ ЛИСТІВ (заповните пізніше):
     private val EMAIL_WEBHOOK_URL = ""
 
     private val TRIAL_DAYS = 7L
@@ -60,15 +60,12 @@ class MainActivity : AppCompatActivity() {
                 val email = input.text.toString().trim().lowercase(Locale.ROOT)
                 if (email.contains("@") && email.contains(".")) {
                     val prefs = getSharedPreferences("ReklamoidPrefs", Context.MODE_PRIVATE)
-                    // Фіксуємо час першої реєстрації, якщо ще не зафіксовано
                     if (!prefs.contains("first_install_time")) {
                         prefs.edit().putLong("first_install_time", System.currentTimeMillis()).apply()
                     }
                     prefs.edit().putString("user_email", email).apply()
 
-                    // Надсилаємо сповіщення на вебхук про нового користувача
                     sendEmailWebhook(email, "NEW_TRIAL_USER")
-
                     verifyAccess(email, isFirstRegistration = true)
                 } else {
                     Toast.makeText(this, getString(R.string.err_invalid_email), Toast.LENGTH_SHORT).show()
@@ -79,6 +76,19 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun fetchUrlWithTimeout(urlString: String): String {
+        val url = URL(urlString)
+        val conn = url.openConnection() as HttpURLConnection
+        conn.connectTimeout = 5000 // Тайм-аут підключення 5 сек
+        conn.readTimeout = 5000    // Тайм-аут читання 5 сек
+        conn.requestMethod = "GET"
+        return try {
+            conn.inputStream.bufferedReader().use { it.readText() }
+        } finally {
+            conn.disconnect()
+        }
+    }
+
     private fun verifyAccess(email: String, isFirstRegistration: Boolean) {
         Toast.makeText(this, getString(R.string.checking_access), Toast.LENGTH_SHORT).show()
 
@@ -86,14 +96,13 @@ class MainActivity : AppCompatActivity() {
             var isPaidOrVip = false
             var expireDateStr = ""
 
-            // 1. Перевіряємо білий список (users.txt)
             try {
-                val text = URL("$USERS_DB_URL?t=${System.currentTimeMillis()}").readText()
+                val text = fetchUrlWithTimeout("$USERS_DB_URL?t=${System.currentTimeMillis()}")
                 for (line in text.lines()) {
                     val parts = line.trim().split("|")
                     if (parts.size >= 2) {
-                        val dbEmail = parts.trim().lowercase(Locale.ROOT)
-                        val validUntil = parts.trim().uppercase(Locale.ROOT)
+                        val dbEmail = parts[0].trim().lowercase(Locale.ROOT)
+                        val validUntil = parts[1].trim().uppercase(Locale.ROOT)
 
                         if (dbEmail == email) {
                             if (validUntil == "LIFETIME") {
@@ -112,7 +121,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             } catch (_: Exception) {
-                // Якщо файл недоступний (немає мережі), перевіримо тріал нижче
+                // Якщо немає інтернету або тайм-аут — переходимо до перевірки локального тріалу
             }
 
             runOnUiThread {
@@ -122,7 +131,6 @@ class MainActivity : AppCompatActivity() {
                     }
                     initYouTubePlayer()
                 } else {
-                    // 2. Перевіряємо 7-денний безкоштовний період
                     val prefs = getSharedPreferences("ReklamoidPrefs", Context.MODE_PRIVATE)
                     val installTime = prefs.getLong("first_install_time", System.currentTimeMillis())
                     val daysPassed = TimeUnit.MILLISECONDS.toDays(System.currentTimeMillis() - installTime)
@@ -137,7 +145,6 @@ class MainActivity : AppCompatActivity() {
                         Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
                         initYouTubePlayer()
                     } else {
-                        // Тріал закінчився — відправляємо сигнал на лист про оплату 299 грн і блокуємо екран
                         sendEmailWebhook(email, "TRIAL_EXPIRED_SEND_INVOICE_299UAH")
                         showPaywallDialog(email)
                     }
@@ -154,6 +161,8 @@ class MainActivity : AppCompatActivity() {
                 val lang = Locale.getDefault().language
                 val url = URL(EMAIL_WEBHOOK_URL)
                 val conn = url.openConnection() as HttpURLConnection
+                conn.connectTimeout = 5000
+                conn.readTimeout = 5000
                 conn.requestMethod = "POST"
                 conn.setRequestProperty("Content-Type", "application/json; utf-8")
                 conn.doOutput = true
@@ -232,7 +241,3 @@ class MainActivity : AppCompatActivity() {
         if (::webView.isInitialized && webView.canGoBack()) {
             webView.goBack()
         } else {
-            super.onBackPressed()
-        }
-    }
-}
