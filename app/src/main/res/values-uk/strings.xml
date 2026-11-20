@@ -1,16 +1,16 @@
 <resources>
-    <string name="app_name">Рекламоїд</string>
-    <string name="reg_title">Активація додатку</string>
-    <string name="reg_message">Введіть ваш Gmail для активації 7 днів безкоштовного перегляду (пароль не потрібен):</string>
-    <string name="reg_hint">example@gmail.com</string>
+    <string name="app_name">TubeMute</string>
+    <string name="reg_title">Активація TubeMute</string>
+    <string name="reg_message">Введіть адресу Gmail для активації 7 днів безкоштовного доступу.</string>
+    <string name="reg_hint">yourname@gmail.com</string>
     <string name="btn_continue">Продовжити</string>
     <string name="btn_exit">Вихід</string>
-    <string name="btn_change_email">Змінити пошту</string>
-    <string name="err_invalid_email">Введіть коректну адресу Gmail!</string>
-    <string name="checking_access">Перевірка доступу…</string>
-    <string name="trial_started">Активовано 7 днів безкоштовного тесту!</string>
-    <string name="trial_days_left">Пробний період. Залишилось днів: %1$d</string>
-    <string name="vip_active">Підписка активна до: %1$s</string>
-    <string name="paywall_title">Пробний період завершено</string>
-    <string name="paywall_message">Ваші 7 безкоштовних днів завершились.\nДля продовження на 1 рік (299 грн) сплатіть підписку та вкажіть ваш Gmail (%1$s).\nКонтакт для зв\'язку: Telegram @ваш_нік</string>
+    <string name="btn_change_email">Змінити Gmail</string>
+    <string name="err_invalid_email">Введіть правильну адресу Gmail.</string>
+    <string name="checking_access">Перевіряємо доступ...</string>
+    <string name="trial_started">Активовано 7 днів безкоштовного доступу!</string>
+    <string name="trial_days_left">Безкоштовний період. Залишилося днів: %1$d</string>
+    <string name="vip_active">Підписка активна: %1$s</string>
+    <string name="paywall_title">Пробний період завершився</string>
+    <string name="paywall_message">Ваші 7 безкоштовних днів завершилися.\nДля продовження на 1 рік (299 грн) здійсніть оплату та надішліть адресу Gmail (%1$s) у Telegram: @your_nick</string>
 </resources>
