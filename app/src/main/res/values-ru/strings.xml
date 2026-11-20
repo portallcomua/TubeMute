@@ -1,16 +1,24 @@
 <resources>
     <string name="app_name">TubeMute</string>
     <string name="reg_title">Активация TubeMute</string>
-    <string name="reg_message">Введите адрес Gmail для активации 7 дней бесплатного доступа.</string>
+    <string name="reg_message">Введите Gmail для начала 7-дневного бесплатного периода.</string>
     <string name="reg_hint">yourname@gmail.com</string>
     <string name="btn_continue">Продолжить</string>
     <string name="btn_exit">Выход</string>
-    <string name="btn_change_email">Изменить Gmail</string>
     <string name="err_invalid_email">Введите правильный адрес Gmail.</string>
-    <string name="checking_access">Проверка доступа...</string>
-    <string name="trial_started">Активировано 7 дней бесплатного доступа!</string>
+    <string name="checking_access">Проверяем доступ...</string>
+    <string name="trial_started">Ваши 7 дней бесплатного доступа начались.</string>
     <string name="trial_days_left">Бесплатный период. Осталось дней: %1$d</string>
-    <string name="vip_active">Подписка активна: %1$s</string>
+    <string name="access_activated">Доступ активирован.</string>
     <string name="paywall_title">Пробный период завершён</string>
-    <string name="paywall_message">Ваши 7 бесплатных дней закончились.\nДля продления на 1 год (299 грн) оплатите подписку и отправьте адрес Gmail (%1$s) в Telegram: @your_nick</string>
+    <string name="paywall_message">Чтобы пользоваться TubeMute ещё один год (299 грн), нажмите «Оплатить». Доступ включится сразу. ВНИМАНИЕ: обязательно укажите этот адрес Gmail в данных платежа, иначе доступ может быть отменён.</string>
+    <string name="btn_pay">Оплатить 299 грн / год</string>
+    <string name="btn_copy_email">Скопировать Gmail</string>
+    <string name="btn_refresh">Я уже оплатил / Проверить доступ</string>
+    <string name="email_copied">Gmail скопирован.</string>
+    <string name="activating_access">Активируем доступ...</string>
+    <string name="payment_link_error">Не удалось открыть ссылку для оплаты.</string>
+    <string name="connection_error_title">Ошибка соединения</string>
+    <string name="connection_error_message">Не удалось проверить доступ на сервере. Проверьте интернет и попробуйте снова. %1$s</string>
+    <string name="btn_retry">Повторить</string>
 </resources>
