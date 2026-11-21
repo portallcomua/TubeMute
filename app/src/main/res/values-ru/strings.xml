@@ -10,7 +10,7 @@
     <string name="trial_days_left">Бесплатный период. Осталось дней: %1$d</string>
     <string name="access_activated">Доступ активирован.</string>
     <string name="paywall_title">Пробный период завершён</string>
-    <string name="paywall_message">Чтобы пользоваться TubeMute ещё один год (299 грн), нажмите «Оплатить». Доступ включится сразу. Обязательно укажите этот адрес Gmail в данных платежа: %1$s</string>
+    <string name="paywall_message">Чтобы пользоваться TubeMute ещё один год (299 грн), нажмите «Оплатить». Обязательно укажите этот адрес Gmail в данных платежа: %1$s</string>
     <string name="btn_pay">Оплатить 299 грн / год</string>
     <string name="btn_refresh">Проверить доступ</string>
     <string name="activating_access">Активируем доступ...</string>
