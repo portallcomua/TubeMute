@@ -26,11 +26,12 @@ The app never receives a payment secret and cannot grant itself PRO. The old Git
 
 ## Payment webhook contract
 
-The webhook requires the `X-TubeMute-Secret` header and a JSON body containing the customer's `email` and an event. Paid/active events grant PRO; cancellation/revocation events remove paid access. The default entitlement is one year. An optional `expires_at` (Unix timestamp or date string) or `lifetime: true` can be supplied.
+TubeMute supports two server-side webhook routes:
 
-Supported paid event names include `payment.completed`, `payment.succeeded`, `subscription.active`, `license.created`, `license.activated`, `purchase.completed`, `active` and `paid`.
+- `/wp-json/tubemute/v1/freemius/webhook` — native Freemius-style signed webhook. Configure the Freemius Secret Key and Product ID in TubeMute settings. The endpoint validates the `X-Signature` HMAC-SHA256 header against the raw request body, then checks the configured product and optional plan IDs before changing access.
+- `/wp-json/tubemute/v1/webhook` — custom/Pay Box relay webhook. It requires `X-TubeMute-Secret` and a JSON body with the customer's `email` and an event. Paid/active events grant PRO; cancellation/revocation events remove paid access. Default entitlement is one year; `expires_at` or `lifetime: true` may be supplied.
 
-This endpoint is a TubeMute webhook contract. The Freemius / UA Pay Box side must be configured to forward verified payment events in this format; do not assume that pasting the URL alone makes a provider's native webhook payload compatible.
+Configure the Freemius webhook to send events to the first URL. Configure the Pay Box project checkout URL as TubeMute's payment URL. The Pay Box plugin itself is not modified. Before launch, test that the Freemius event contains the expected customer email and configured product/plan identifiers.
 
 ## Android compatibility
 
