@@ -24,6 +24,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Set up PHP for plugin syntax check
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+
+      - name: Validate TubeMute WordPress plugin syntax
+        run: php -l server/tubemute-access-api.php
+
       - name: Require permanent signing key
         shell: bash
         run: |
