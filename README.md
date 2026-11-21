@@ -1,51 +1,54 @@
-# TubeMute
+# TubeMute 2.0.0
 
-TubeMute is an Android TV application based on Android WebView.
+TubeMute is an Android TV / Google TV / Android application with server-managed access.
 
-Current release: 1.7.2. Advertisement audio is muted without forcibly seeking the video timeline.
+## Components
 
-## Features
+- Android app: email registration, access check at launch, YouTube WebView and ad-skip experiment.
+- WordPress plugin: central user database, trial periods, device records, email reminders, manual lifetime access, blocking and PRO status.
+- Payment provider: configured from the TubeMute WordPress settings. A confirmed payment must reach the TubeMute webhook before PRO is granted.
 
-- Android TV launcher support
-- YouTube web interface
-- Remote-control navigation
-- Full-screen video support
-- Experimental ad-skip functionality
-- Gmail registration and server-side access verification
-- 7-day trial period
-- Ukrainian, English and Russian interface strings
+## Server setup
 
-## Device compatibility
+1. Install or replace the existing TubeMute Access API plugin using `server/tubemute-access-api.php`.
+2. Keep the existing plugin active; the updated code creates or upgrades its database tables automatically.
+3. In WordPress admin, open **TubeMute**.
+4. Set trial length, reminder lead time, administrator email and the PRO checkout URL.
+5. Set a long random webhook secret. The payment integration must send it in the `X-TubeMute-Secret` header.
+6. Add any existing users manually in the TubeMute admin page, including lifetime users.
 
-- Minimum Android API: 19 (Android 4.4)
-- Target SDK: 28
-- Application ID: com.custom.reklamoid
-- APK is built as a signed Release package.
-- YouTube playback compatibility also depends on the Android System WebView installed on the TV.
+The Android app calls:
 
-## USB installation
+- `POST /wp-json/tubemute/v1/check` — registers a new email, checks trial/PRO access and returns the checkout URL.
+- `POST /wp-json/tubemute/v1/webhook` — receives authenticated payment entitlement events.
 
-1. Download the `TubeMute-USB-Installer` artifact from the latest successful GitHub Actions run.
-2. Extract the ZIP archive to a USB flash drive.
-3. Connect the flash drive to the Android TV.
-4. Open the TV's File Manager, select `TubeMute.apk`, and confirm installation.
-5. Allow installation from that file manager if Android asks.
+The app never receives a payment secret and cannot grant itself PRO. The old GitHub `users.txt` list and GitHub read token are no longer part of the access flow.
 
-Android TV requires the user to confirm APK installation. A USB drive cannot silently install an application.
+## Payment webhook contract
 
-## Permanent release signing
+The webhook requires the `X-TubeMute-Secret` header and a JSON body containing the customer's `email` and an event. Paid/active events grant PRO; cancellation/revocation events remove paid access. The default entitlement is one year. An optional `expires_at` (Unix timestamp or date string) or `lifetime: true` can be supplied.
 
-The Release APK is signed with one permanent private key. Keep the keystore backup safe. Every future update must use the same keystore, alias and passwords or Android may reject the update.
+Supported paid event names include `payment.completed`, `payment.succeeded`, `subscription.active`, `license.created`, `license.activated`, `purchase.completed`, `active` and `paid`.
 
-GitHub Actions repository secrets required:
+This endpoint is a TubeMute webhook contract. The Freemius / UA Pay Box side must be configured to forward verified payment events in this format; do not assume that pasting the URL alone makes a provider's native webhook payload compatible.
+
+## Android compatibility
+
+- Application ID: `com.custom.reklamoid` (preserved for updates).
+- Version: 2.0.0 / versionCode 13.
+- Minimum Android API: 19 (Android 4.4).
+- Target SDK: 28.
+- Android TV / Google TV / Android smartphones. Samsung Tizen and LG webOS are not Android and cannot install APK files.
+
+## Build and signing
+
+GitHub Actions builds a signed Release APK and USB installer. The same permanent signing key must be used for every update.
+
+Required GitHub Actions secrets:
 
 - `ANDROID_KEYSTORE_BASE64`
 - `ANDROID_KEYSTORE_PASSWORD`
 - `ANDROID_KEY_ALIAS`
 - `ANDROID_KEY_PASSWORD`
 
-Never commit the keystore or passwords to this public repository.
-
-## Build
-
-The workflow builds only the signed Release APK and the USB installer ZIP. It does not publish a Debug APK.
+Never commit the keystore or passwords.
