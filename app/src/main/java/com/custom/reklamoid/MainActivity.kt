@@ -1,4 +1,3 @@
-
 package com.custom.reklamoid
 
 import android.annotation.SuppressLint
