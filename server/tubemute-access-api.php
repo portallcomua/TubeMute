@@ -17,10 +17,15 @@ final class TubeMute {
 
     public static function init() {
         register_activation_hook(__FILE__, [__CLASS__, 'activate']);
+        add_action('plugins_loaded', [__CLASS__, 'maybe_upgrade']);
         add_action('rest_api_init', [__CLASS__, 'routes']);
         add_action('admin_menu', [__CLASS__, 'admin_menu']);
         add_action(self::CRON, [__CLASS__, 'send_due_reminders']);
         add_action('init', [__CLASS__, 'schedule']);
+    }
+
+    public static function maybe_upgrade() {
+        if (get_option('tubemute_db_version') !== self::DB_VERSION) { self::activate(); }
     }
 
     private static function table($name) { global $wpdb; return $wpdb->prefix . $name; }
