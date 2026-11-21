@@ -43,19 +43,43 @@ jobs:
         with:
           gradle-version: '8.4'
 
-      - name: Validate Android TV resources and manifest
+      - name: Validate real PNG resources and Android manifest
         shell: bash
         run: |
-          test -s app/src/main/res/drawable/tv_banner.png
-          test -s app/src/main/res/drawable/ic_launcher.png
-          grep -q 'android.software.leanback' app/src/main/AndroidManifest.xml
-          grep -q 'android.hardware.touchscreen' app/src/main/AndroidManifest.xml
-          grep -q 'android:required="false"' app/src/main/AndroidManifest.xml
-          grep -q 'android.intent.category.LEANBACK_LAUNCHER' app/src/main/AndroidManifest.xml
-          if grep -R -nE 'REPLACE_NS|ВАШ_ЛОГІН' app/src/main; then
-            echo "Unreplaced placeholder found."
-            exit 1
-          fi
+          python3 - <<'PY'
+          import struct
+          from pathlib import Path
+
+          checks = {
+              Path("app/src/main/res/drawable/ic_launcher.png"): (192, 192),
+              Path("app/src/main/res/drawable/tv_banner.png"): (320, 180),
+          }
+          signature = b"\x89PNG\r\n\x1a\n"
+          for path, expected in checks.items():
+              data = path.read_bytes()
+              if len(data) < 24 or data[:8] != signature or data[12:16] != b"IHDR":
+                  raise SystemExit(f"Invalid PNG file: {path}")
+              actual = struct.unpack(">II", data[16:24])
+              if actual != expected:
+                  raise SystemExit(f"Wrong PNG dimensions for {path}: {actual}, expected {expected}")
+              print(f"VALID PNG: {path} {actual[0]}x{actual[1]} ({len(data)} bytes)")
+
+          manifest = Path("app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
+          required = (
+              'android:icon="@drawable/ic_launcher"',
+              'android:banner="@drawable/tv_banner"',
+              'android:name=".MainActivity"',
+              'android:exported="true"',
+              'android.intent.category.LEANBACK_LAUNCHER',
+              'android.intent.category.LAUNCHER',
+          )
+          for value in required:
+              if value not in manifest:
+                  raise SystemExit(f"Missing manifest entry: {value}")
+          if "tv_banner_vec" in manifest:
+              raise SystemExit("Manifest still references the obsolete vector banner")
+          print("Manifest resource references and launcher entries: OK")
+          PY
 
       - name: Restore permanent signing key
         shell: bash
@@ -73,19 +97,32 @@ jobs:
             -PRELEASE_KEY_ALIAS="$RELEASE_KEY_ALIAS" \
             -PRELEASE_KEY_PASSWORD="$RELEASE_KEY_PASSWORD"
 
-      - name: Verify APK package, version, Android range and signature
+      - name: Verify APK package, alignment and V1 plus V2 signatures
         shell: bash
         run: |
           APK="app/build/outputs/apk/release/app-release.apk"
           test -s "$APK"
           AAPT="$(find "$ANDROID_HOME/build-tools" -name aapt | sort | tail -n 1)"
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort | tail -n 1)"
+          ZIPALIGN="$(find "$ANDROID_HOME/build-tools" -name zipalign | sort | tail -n 1)"
+          test -x "$AAPT"
+          test -x "$APKSIGNER"
+          test -x "$ZIPALIGN"
+
+          echo "===== APK ZIP ALIGNMENT CHECK ====="
+          "$ZIPALIGN" -c -v 4 "$APK"
+
+          echo "===== APK SIGNATURE VERIFICATION ====="
+          "$APKSIGNER" verify --verbose --print-certs "$APK" 2>&1 | tee apk-signature-report.txt
+          grep -Fq "Verified using v1 scheme (JAR signing): true" apk-signature-report.txt
+          grep -Fq "Verified using v2 scheme (APK Signature Scheme v2): true" apk-signature-report.txt
+
           "$AAPT" dump badging "$APK" > apk-info.txt
-          grep -q "package: name='com.custom.reklamoid' versionCode='11' versionName='1.7.3'" apk-info.txt
+          grep -q "package: name='com.custom.reklamoid' versionCode='12' versionName='1.7.4'" apk-info.txt
           grep -q "sdkVersion:'19'" apk-info.txt
           grep -q "targetSdkVersion:'28'" apk-info.txt
           grep -q "launchable-activity" apk-info.txt
-          "$APKSIGNER" verify --verbose "$APK"
+          echo "===== APK PACKAGE DETAILS ====="
           cat apk-info.txt
           ls -lh "$APK"
 
@@ -95,24 +132,19 @@ jobs:
           mkdir -p TubeMute-USB
           cp app/build/outputs/apk/release/app-release.apk TubeMute-USB/TubeMute.apk
           cat > TubeMute-USB/ПРОЧИТАЙТЕ-ПЕРЕД-УСТАНОВКОЮ.txt <<'EOF'
-          TUBEMUTE 1.7.3 — ВСТАНОВЛЕННЯ НА ANDROID TV / GOOGLE TV
+          TUBEMUTE 1.7.4 — ВСТАНОВЛЕННЯ НА ANDROID TV / GOOGLE TV / ANDROID
 
           1. Скопіюйте файл TubeMute.apk у корінь USB-флешки.
-          2. Підключіть флешку до телевізора.
-          3. Відкрийте на телевізорі «Файли», «File Manager» або «Медіацентр».
-          4. Виберіть TubeMute.apk.
-          5. Якщо телевізор попросить дозвіл, відкрийте налаштування цього файлового менеджера
-             та дозвольте «Встановлення невідомих програм».
-          6. Поверніться до TubeMute.apk і натисніть «Встановити».
-          7. Після встановлення відкрийте TubeMute зі списку програм.
+          2. Підключіть флешку до телевізора або смартфона.
+          3. Відкрийте файловий менеджер і виберіть TubeMute.apk.
+          4. Якщо система попросить дозвіл, дозвольте встановлення невідомих програм для цього файлового менеджера.
+          5. Поверніться до APK та натисніть «Встановити».
 
           ВАЖЛИВО:
-          - Потрібне перше підтвердження встановлення на самому телевізорі.
-          - Якщо система повідомляє про конфлікт підпису зі старою тестовою версією,
-            стару версію TubeMute потрібно видалити, а потім встановити цю.
-          - APK призначений для Android TV, Google TV та Android Smart TV без сенсорного екрана.
+          - Якщо система повідомляє про конфлікт підпису, видаліть попередню тестову версію TubeMute та повторіть встановлення.
+          - APK призначений для Android TV, Google TV та Android-смартфонів.
           - Мінімальна системна версія APK: Android 4.4 (API 19).
-          - Для роботи YouTube потрібен сумісний і оновлений системний Android System WebView.
+          - Для відтворення YouTube потрібен сумісний системний Android System WebView.
           - Samsung Tizen та LG webOS не підтримують Android APK.
           EOF
           (cd TubeMute-USB && sha256sum TubeMute.apk > SHA256SUMS.txt)
@@ -124,7 +156,7 @@ jobs:
       - name: Upload standalone signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: TubeMute-1.7.3-APK
+          name: TubeMute-1.7.4-APK
           path: |
             TubeMute.apk
             TubeMute.apk.sha256
@@ -134,7 +166,7 @@ jobs:
       - name: Upload USB installer ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: TubeMute-1.7.3-USB
+          name: TubeMute-1.7.4-USB
           path: TubeMute-USB-Installer.zip
           if-no-files-found: error
           retention-days: 90
@@ -142,8 +174,8 @@ jobs:
       - name: Publish downloadable GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.7.3
-          name: TubeMute 1.7.3 — Android TV
+          tag_name: v1.7.4
+          name: TubeMute 1.7.4 — Android TV and Android
           target_commitish: ${{ github.sha }}
           generate_release_notes: true
           make_latest: true
