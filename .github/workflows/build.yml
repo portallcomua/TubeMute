@@ -130,7 +130,7 @@ jobs:
           grep -Fq "Verified using v2 scheme (APK Signature Scheme v2): true" apk-signature-report.txt
 
           "$AAPT" dump badging "$APK" > apk-info.txt
-          grep -q "package: name='com.custom.reklamoid' versionCode='13' versionName='2.0.0'" apk-info.txt
+          grep -q "package: name='com.custom.reklamoid' versionCode='14' versionName='2.0.1'" apk-info.txt
           grep -q "sdkVersion:'19'" apk-info.txt
           grep -q "targetSdkVersion:'28'" apk-info.txt
           grep -q "launchable-activity" apk-info.txt
@@ -144,7 +144,7 @@ jobs:
           mkdir -p TubeMute-USB
           cp app/build/outputs/apk/release/app-release.apk TubeMute-USB/TubeMute.apk
           cat > TubeMute-USB/ПРОЧИТАЙТЕ-ПЕРЕД-УСТАНОВКОЮ.txt <<'EOF'
-          TUBEMUTE 2.0.0 — ВСТАНОВЛЕННЯ НА ANDROID TV / GOOGLE TV / ANDROID
+          TUBEMUTE 2.0.1 — ВСТАНОВЛЕННЯ НА ANDROID TV / GOOGLE TV / ANDROID
 
           1. Скопіюйте файл TubeMute.apk у корінь USB-флешки.
           2. Підключіть флешку до телевізора або смартфона.
@@ -168,7 +168,7 @@ jobs:
       - name: Upload standalone signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: TubeMute-2.0.0-APK
+          name: TubeMute-2.0.1-APK
           path: |
             TubeMute.apk
             TubeMute.apk.sha256
@@ -178,7 +178,7 @@ jobs:
       - name: Upload USB installer ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: TubeMute-2.0.0-USB
+          name: TubeMute-2.0.1-USB
           path: TubeMute-USB-Installer.zip
           if-no-files-found: error
           retention-days: 90
@@ -186,8 +186,8 @@ jobs:
       - name: Publish downloadable GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v2.0.0
-          name: TubeMute 2.0.0 — Android TV and Android
+          tag_name: v2.0.1
+          name: TubeMute 2.0.1 — Android TV and Android
           target_commitish: ${{ github.sha }}
           generate_release_notes: true
           make_latest: true
