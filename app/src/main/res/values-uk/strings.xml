@@ -1,24 +1,26 @@
+
 <resources>
     <string name="app_name">TubeMute</string>
     <string name="reg_title">Активація TubeMute</string>
-    <string name="reg_message">Введіть Gmail для початку 7-денного безкоштовного періоду.</string>
+    <string name="reg_message">Введіть адресу Gmail для початку 7-денного безкоштовного періоду.</string>
     <string name="reg_hint">yourname@gmail.com</string>
     <string name="btn_continue">Продовжити</string>
     <string name="btn_exit">Вихід</string>
     <string name="err_invalid_email">Введіть правильну адресу Gmail.</string>
     <string name="checking_access">Перевіряємо доступ...</string>
-    <string name="trial_started">Ваші 7 днів безкоштовного доступу розпочато.</string>
     <string name="trial_days_left">Безкоштовний період. Залишилося днів: %1$d</string>
     <string name="access_activated">Доступ активовано.</string>
     <string name="paywall_title">Пробний період завершився</string>
-    <string name="paywall_message">Щоб користуватися TubeMute ще один рік (299 грн), натисніть «Оплатити». Доступ увімкнеться відразу. УВАГА: обов’язково вкажіть цю адресу Gmail у даних платежу, інакше доступ може бути скасовано.</string>
+    <string name="paywall_message">Щоб користуватися TubeMute ще один рік (299 грн), натисніть «Оплатити». Доступ увімкнеться відразу. Обов’язково вкажіть цю адресу Gmail у даних платежу: %1$s</string>
     <string name="btn_pay">Оплатити 299 грн / рік</string>
-    <string name="btn_copy_email">Скопіювати Gmail</string>
-    <string name="btn_refresh">Я вже оплатив / Перевірити доступ</string>
-    <string name="email_copied">Gmail скопійовано.</string>
+    <string name="btn_refresh">Перевірити доступ</string>
     <string name="activating_access">Активуємо доступ...</string>
     <string name="payment_link_error">Не вдалося відкрити посилання для оплати.</string>
+    <string name="payment_reminder">Завершіть оплату та обов’язково вкажіть свою Gmail-адресу в призначенні платежу.</string>
     <string name="connection_error_title">Помилка з’єднання</string>
-    <string name="connection_error_message">Не вдалося перевірити доступ на сервері. Перевірте інтернет і спробуйте ще раз. %1$s</string>
+    <string name="connection_error_message">Не вдалося перевірити доступ на сервері. Перевірте інтернет і спробуйте ще раз. Деталі: %1$s</string>
     <string name="btn_retry">Повторити</string>
+    <string name="unknown_server_response">Сервер повернув невідому відповідь.</string>
+    <string name="unknown_error">Невідома помилка.</string>
+    <string name="activation_failed">Сервер не зміг активувати доступ.</string>
 </resources>
