@@ -8,6 +8,9 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.text.InputType
+import android.view.KeyEvent
+import android.view.View
+import android.view.WindowManager
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
@@ -24,18 +27,18 @@ import kotlin.concurrent.thread
 class MainActivity : AppCompatActivity() {
 
     companion object {
-        private const val API_BASE =
-            "https://uaserver.pp.ua/wp-json/tubemute/v1"
-
-        private const val PAYMENT_URL =
-            "https://www.privat24.ua/send/k8l6z"
-
+        private const val API_BASE = "https://uaserver.pp.ua/wp-json/tubemute/v1"
+        private const val PAYMENT_URL = "https://www.privat24.ua/send/k8l6z"
         private const val PREFS = "TubeMutePrefs"
         private const val EMAIL_KEY = "user_email"
     }
 
     private var webView: WebView? = null
     private var currentEmail = ""
+    private var customView: View? = null
+    private var customViewCallback: WebChromeClient.CustomViewCallback? = null
+    private var previousSystemUiVisibility = 0
+
     @Volatile
     private var requestInProgress = false
 
@@ -47,6 +50,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         currentEmail = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(EMAIL_KEY, "") ?: ""
@@ -64,6 +68,8 @@ class MainActivity : AppCompatActivity() {
             inputType = InputType.TYPE_CLASS_TEXT or
                 InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
             setSingleLine(true)
+            isFocusable = true
+            isFocusableInTouchMode = true
         }
 
         AlertDialog.Builder(this)
@@ -76,10 +82,7 @@ class MainActivity : AppCompatActivity() {
                     .trim()
                     .toLowerCase(Locale.ROOT)
 
-                if (!email.matches(
-                        Regex("^[A-Za-z0-9._%+-]+@gmail\\.com$")
-                    )
-                ) {
+                if (!email.matches(Regex("^[A-Za-z0-9._%+-]+@gmail\\.com$"))) {
                     Toast.makeText(
                         this,
                         R.string.err_invalid_email,
@@ -95,9 +98,7 @@ class MainActivity : AppCompatActivity() {
                     checkAccess()
                 }
             }
-            .setNegativeButton(R.string.btn_exit) { _, _ ->
-                finish()
-            }
+            .setNegativeButton(R.string.btn_exit) { _, _ -> finish() }
             .show()
     }
 
@@ -114,10 +115,7 @@ class MainActivity : AppCompatActivity() {
                 "Content-Type",
                 "application/json; charset=UTF-8"
             )
-            connection.setRequestProperty(
-                "Accept",
-                "application/json"
-            )
+            connection.setRequestProperty("Accept", "application/json")
 
             val payload = JSONObject().apply {
                 put("email", currentEmail)
@@ -125,9 +123,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             connection.outputStream.use { output ->
-                output.write(
-                    payload.toString().toByteArray(Charsets.UTF_8)
-                )
+                output.write(payload.toString().toByteArray(Charsets.UTF_8))
                 output.flush()
             }
 
@@ -144,10 +140,7 @@ class MainActivity : AppCompatActivity() {
 
             if (responseCode !in 200..299) {
                 val message = try {
-                    JSONObject(response).optString(
-                        "message",
-                        "HTTP $responseCode"
-                    )
+                    JSONObject(response).optString("message", "HTTP $responseCode")
                 } catch (_: Exception) {
                     "HTTP $responseCode"
                 }
@@ -164,11 +157,7 @@ class MainActivity : AppCompatActivity() {
         if (requestInProgress) return
         requestInProgress = true
 
-        Toast.makeText(
-            this,
-            R.string.checking_access,
-            Toast.LENGTH_SHORT
-        ).show()
+        Toast.makeText(this, R.string.checking_access, Toast.LENGTH_SHORT).show()
 
         thread {
             try {
@@ -177,9 +166,8 @@ class MainActivity : AppCompatActivity() {
 
                 runOnUiThread {
                     requestInProgress = false
-
                     when (status) {
-                        "licensed" -> {
+                        "licensed", "temporary" -> {
                             Toast.makeText(
                                 this,
                                 R.string.access_activated,
@@ -187,7 +175,6 @@ class MainActivity : AppCompatActivity() {
                             ).show()
                             initYouTubePlayer()
                         }
-
                         "trial" -> {
                             val days = result.optInt("days_left", 0)
                             Toast.makeText(
@@ -197,18 +184,7 @@ class MainActivity : AppCompatActivity() {
                             ).show()
                             initYouTubePlayer()
                         }
-
-                        "temporary" -> {
-                            Toast.makeText(
-                                this,
-                                R.string.access_activated,
-                                Toast.LENGTH_SHORT
-                            ).show()
-                            initYouTubePlayer()
-                        }
-
                         "expired" -> showPaywallDialog()
-
                         else -> showConnectionError(
                             getString(R.string.unknown_server_response)
                         )
@@ -229,40 +205,24 @@ class MainActivity : AppCompatActivity() {
         AlertDialog.Builder(this)
             .setTitle(R.string.connection_error_title)
             .setMessage(
-                getString(
-                    R.string.connection_error_message,
-                    details
-                )
+                getString(R.string.connection_error_message, details)
             )
             .setCancelable(false)
-            .setPositiveButton(R.string.btn_retry) { _, _ ->
-                checkAccess()
-            }
-            .setNegativeButton(R.string.btn_exit) { _, _ ->
-                finish()
-            }
+            .setPositiveButton(R.string.btn_retry) { _, _ -> checkAccess() }
+            .setNegativeButton(R.string.btn_exit) { _, _ -> finish() }
             .show()
     }
 
     private fun showPaywallDialog() {
         AlertDialog.Builder(this)
             .setTitle(R.string.paywall_title)
-            .setMessage(
-                getString(
-                    R.string.paywall_message,
-                    currentEmail
-                )
-            )
+            .setMessage(getString(R.string.paywall_message, currentEmail))
             .setCancelable(false)
             .setPositiveButton(R.string.btn_pay) { _, _ ->
                 activateAndOpenPayment()
             }
-            .setNeutralButton(R.string.btn_refresh) { _, _ ->
-                checkAccess()
-            }
-            .setNegativeButton(R.string.btn_exit) { _, _ ->
-                finish()
-            }
+            .setNeutralButton(R.string.btn_refresh) { _, _ -> checkAccess() }
+            .setNegativeButton(R.string.btn_exit) { _, _ -> finish() }
             .show()
     }
 
@@ -283,14 +243,10 @@ class MainActivity : AppCompatActivity() {
 
                 runOnUiThread {
                     requestInProgress = false
-
                     if (status == "temporary" || status == "licensed") {
                         try {
                             startActivity(
-                                Intent(
-                                    Intent.ACTION_VIEW,
-                                    Uri.parse(PAYMENT_URL)
-                                )
+                                Intent(Intent.ACTION_VIEW, Uri.parse(PAYMENT_URL))
                             )
                         } catch (_: Exception) {
                             Toast.makeText(
@@ -305,7 +261,6 @@ class MainActivity : AppCompatActivity() {
                             R.string.payment_reminder,
                             Toast.LENGTH_LONG
                         ).show()
-
                         initYouTubePlayer()
                     } else {
                         showConnectionError(
@@ -326,9 +281,16 @@ class MainActivity : AppCompatActivity() {
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun initYouTubePlayer() {
+        customView = null
+        customViewCallback = null
+
         val player = WebView(this)
         webView = player
         setContentView(player)
+
+        player.isFocusable = true
+        player.isFocusableInTouchMode = true
+        player.requestFocus()
 
         val settings: WebSettings = player.settings
         settings.javaScriptEnabled = true
@@ -336,16 +298,39 @@ class MainActivity : AppCompatActivity() {
         settings.loadsImagesAutomatically = true
         settings.mediaPlaybackRequiresUserGesture = false
         settings.javaScriptCanOpenWindowsAutomatically = true
+        settings.setSupportMultipleWindows(false)
         settings.useWideViewPort = true
         settings.loadWithOverviewMode = true
+        settings.cacheMode = WebSettings.LOAD_DEFAULT
 
-        player.webChromeClient = WebChromeClient()
+        player.webChromeClient = object : WebChromeClient() {
+            override fun onShowCustomView(
+                view: View?,
+                callback: CustomViewCallback?
+            ) {
+                if (view == null) return
+                if (customView != null) {
+                    callback?.onCustomViewHidden()
+                    return
+                }
+
+                previousSystemUiVisibility =
+                    window.decorView.systemUiVisibility
+                customView = view
+                customViewCallback = callback
+                player.visibility = View.GONE
+                setContentView(view)
+                window.decorView.systemUiVisibility = immersiveSystemUiFlags()
+                view.requestFocus()
+            }
+
+            override fun onHideCustomView() {
+                hideCustomView()
+            }
+        }
 
         player.webViewClient = object : WebViewClient() {
-            override fun onPageFinished(
-                view: WebView?,
-                url: String?
-            ) {
+            override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
                 injectAdSkipper()
             }
@@ -354,9 +339,33 @@ class MainActivity : AppCompatActivity() {
         player.loadUrl("https://www.youtube.com/tv")
     }
 
+    private fun immersiveSystemUiFlags(): Int {
+        return (
+            View.SYSTEM_UI_FLAG_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            )
+    }
+
+    private fun hideCustomView() {
+        if (customView == null) return
+
+        customView = null
+        setContentView(webView)
+        webView?.visibility = View.VISIBLE
+        window.decorView.systemUiVisibility = previousSystemUiVisibility
+
+        val callback = customViewCallback
+        customViewCallback = null
+        callback?.onCustomViewHidden()
+        webView?.requestFocus()
+    }
+
     private fun injectAdSkipper() {
         val player = webView ?: return
-
         val script = """
             (function() {
                 if (window.tubeMuteAdSkipper) return;
@@ -383,8 +392,7 @@ class MainActivity : AppCompatActivity() {
 
                         if (ad && video) {
                             video.muted = true;
-                            if (isFinite(video.duration) &&
-                                video.duration > 0) {
+                            if (isFinite(video.duration) && video.duration > 0) {
                                 video.currentTime = video.duration;
                             }
                         }
@@ -396,8 +404,21 @@ class MainActivity : AppCompatActivity() {
         player.evaluateJavascript(script, null)
     }
 
+    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_BACK && customView != null) {
+            hideCustomView()
+            return true
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
     @Deprecated("Deprecated in Android")
     override fun onBackPressed() {
+        if (customView != null) {
+            hideCustomView()
+            return
+        }
+
         val player = webView
         if (player != null && player.canGoBack()) {
             player.goBack()
@@ -406,7 +427,18 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && customView != null) {
+            window.decorView.systemUiVisibility = immersiveSystemUiFlags()
+        }
+    }
+
     override fun onDestroy() {
+        customViewCallback?.onCustomViewHidden()
+        customViewCallback = null
+        customView = null
+
         webView?.apply {
             stopLoading()
             loadUrl("about:blank")
@@ -414,6 +446,8 @@ class MainActivity : AppCompatActivity() {
             destroy()
         }
         webView = null
+
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         super.onDestroy()
     }
 }
