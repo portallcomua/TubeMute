@@ -1,8 +1,13 @@
 <resources>
     <string name="app_name">TubeMute</string>
     <string name="reg_title">Activate TubeMute</string>
-    <string name="reg_message">Enter your email address to create an account and start the free trial.</string>
+    <string name="reg_message">Choose a Google account already on this device, or enter another email address.</string>
     <string name="reg_hint">yourname@gmail.com</string>
+    <string name="manual_email_message">Enter the email address used for your TubeMute account and payments.</string>
+    <string name="google_account_description">Choose the email for your TubeMute account. This does not sign you in to YouTube.</string>
+    <string name="google_account_unavailable">Google account selection is unavailable on this device. Enter your email instead.</string>
+    <string name="btn_use_google_account">Use Google account</string>
+    <string name="btn_enter_email">Enter email manually</string>
     <string name="btn_continue">Continue</string>
     <string name="btn_exit">Exit</string>
     <string name="err_invalid_email">Enter a valid email address.</string>
