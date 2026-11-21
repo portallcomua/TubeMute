@@ -350,10 +350,13 @@ final class TubeMute {
                 if (!$user) { $user = self::create_user($email); }
                 if ($user) {
                     $lifetime = !empty($_POST['lifetime']);
-                    $days = max(1, min(3650, absint($_POST['custom_days'] ?? 7)));
+                    $days = max(1, min(365, absint($_POST['custom_days'] ?? 7)));
                     $wpdb->update($users_table, [
                         'lifetime' => $lifetime ? 1 : 0,
-                        'access_until' => $lifetime ? null : self::date_mysql(time() + $days * DAY_IN_SECONDS),
+                        'access_until' => null,
+                        'trial_until' => $lifetime ? $user['trial_until'] : self::date_mysql(time() + $days * DAY_IN_SECONDS),
+                        'reminder_sent' => 0,
+                        'expired_notice_sent' => 0,
                         'status' => 'active', 'source' => 'admin', 'updated_at' => self::now_mysql()
                     ], ['id' => (int)$user['id']]);
                     echo '<div class="notice notice-success"><p>Користувача збережено: ' . esc_html($email) . '</p></div>';
@@ -393,7 +396,7 @@ final class TubeMute {
         wp_nonce_field('tm_add_user');
         echo '<input type="email" name="new_email" required placeholder="user@gmail.com" class="regular-text"> ';
         echo '<label><input type="checkbox" name="lifetime" value="1"> Довічний доступ</label> ';
-        echo '<label>Термін PRO (днів): <input type="number" name="custom_days" value="365" min="1" max="3650" style="width:90px"></label> ';
+        echo '<label>Тестових днів: <input type="number" name="custom_days" value="7" min="1" max="365" style="width:90px"></label> ';
         submit_button('Зберегти користувача', 'secondary', 'tm_add_user', false);
         echo '</form><hr><h2>Користувачі (останні 500)</h2>';
         echo '<table class="widefat striped"><thead><tr><th>Email</th><th>Реєстрація</th><th>Тест до</th><th>PRO до</th><th>Статус</th><th>Дії</th></tr></thead><tbody>';
