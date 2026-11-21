@@ -1,3 +1,4 @@
+
 package com.custom.reklamoid
 
 import android.annotation.SuppressLint
@@ -36,6 +37,7 @@ class MainActivity : AppCompatActivity() {
 
     private var webView: WebView? = null
     private var currentEmail = ""
+    @Volatile
     private var requestInProgress = false
 
     private val deviceId: String
@@ -73,9 +75,12 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton(R.string.btn_continue) { _, _ ->
                 val email = input.text.toString()
                     .trim()
-                    .lowercase(Locale.ROOT)
+                    .toLowerCase(Locale.ROOT)
 
-                if (!email.matches(Regex("^[A-Za-z0-9._%+-]+@gmail\\.com$"))) {
+                if (!email.matches(
+                        Regex("^[A-Za-z0-9._%+-]+@gmail\\.com$")
+                    )
+                ) {
                     Toast.makeText(
                         this,
                         R.string.err_invalid_email,
@@ -121,12 +126,14 @@ class MainActivity : AppCompatActivity() {
             }
 
             connection.outputStream.use { output ->
-                output.write(payload.toString().toByteArray(Charsets.UTF_8))
+                output.write(
+                    payload.toString().toByteArray(Charsets.UTF_8)
+                )
                 output.flush()
             }
 
-            val code = connection.responseCode
-            val stream = if (code in 200..299) {
+            val responseCode = connection.responseCode
+            val stream = if (responseCode in 200..299) {
                 connection.inputStream
             } else {
                 connection.errorStream
@@ -136,14 +143,14 @@ class MainActivity : AppCompatActivity() {
                 it.readText()
             } ?: ""
 
-            if (code !in 200..299) {
+            if (responseCode !in 200..299) {
                 val message = try {
                     JSONObject(response).optString(
                         "message",
-                        "HTTP $code"
+                        "HTTP $responseCode"
                     )
                 } catch (_: Exception) {
-                    "HTTP $code"
+                    "HTTP $responseCode"
                 }
                 throw Exception(message)
             }
@@ -176,9 +183,7 @@ class MainActivity : AppCompatActivity() {
                         "licensed" -> {
                             Toast.makeText(
                                 this,
-                                getString(
-                                    R.string.access_activated
-                                ),
+                                R.string.access_activated,
                                 Toast.LENGTH_SHORT
                             ).show()
                             initYouTubePlayer()
@@ -188,10 +193,7 @@ class MainActivity : AppCompatActivity() {
                             val days = result.optInt("days_left", 0)
                             Toast.makeText(
                                 this,
-                                getString(
-                                    R.string.trial_days_left,
-                                    days
-                                ),
+                                getString(R.string.trial_days_left, days),
                                 Toast.LENGTH_LONG
                             ).show()
                             initYouTubePlayer()
@@ -339,6 +341,7 @@ class MainActivity : AppCompatActivity() {
         settings.loadWithOverviewMode = true
 
         player.webChromeClient = WebChromeClient()
+
         player.webViewClient = object : WebViewClient() {
             override fun onPageFinished(
                 view: WebView?,
