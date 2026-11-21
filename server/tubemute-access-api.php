@@ -35,6 +35,7 @@ final class TubeMute {
             'reminder_days' => 3,
             'admin_email' => get_option('admin_email'),
             'payment_url' => '',
+            'paybox_service_id' => 0,
             'product_name' => 'TubeMute PRO',
             'webhook_secret' => '',
             'freemius_secret' => '',
@@ -150,6 +151,46 @@ final class TubeMute {
         }
     }
 
+
+    private static function sync_paybox_license($user) {
+        global $wpdb;
+        $settings = self::settings();
+        $service_id = absint($settings['paybox_service_id']);
+        if (!$service_id || !$user) { return $user; }
+        $table = $wpdb->prefix . 'upb_licenses';
+        $exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table));
+        if ($exists !== $table) { return $user; }
+        $license = $wpdb->get_row($wpdb->prepare(
+            "SELECT status, expires FROM $table WHERE service_id=%d AND email=%s ORDER BY updated_at DESC, id DESC LIMIT 1",
+            $service_id, $user['email']
+        ), ARRAY_A);
+        if (!$license) { return $user; }
+        $expires = (int)$license['expires'];
+        if ($license['status'] === 'active' && (!$expires || $expires > time())) {
+            $lifetime = !$expires;
+            $until = $lifetime ? null : self::date_mysql($expires);
+            if ((int)$user['lifetime'] !== ($lifetime ? 1 : 0) || $user['access_until'] !== $until || $user['source'] !== 'ua_pay_box') {
+                $wpdb->update(self::table(self::TABLE), [
+                    'lifetime' => $lifetime ? 1 : 0,
+                    'access_until' => $until,
+                    'status' => 'active',
+                    'source' => 'ua_pay_box',
+                    'updated_at' => self::now_mysql()
+                ], ['id' => (int)$user['id']]);
+                $user = self::get_user($user['email']);
+            }
+        } elseif ($user['source'] === 'ua_pay_box') {
+            $wpdb->update(self::table(self::TABLE), [
+                'lifetime' => 0,
+                'access_until' => self::date_mysql(time() - 60),
+                'source' => 'ua_pay_box_expired',
+                'updated_at' => self::now_mysql()
+            ], ['id' => (int)$user['id']]);
+            $user = self::get_user($user['email']);
+        }
+        return $user;
+    }
+
     public static function check(WP_REST_Request $request) {
         $data = self::json_input($request);
         $email = self::clean_email($data['email'] ?? '');
@@ -161,6 +202,7 @@ final class TubeMute {
         if (!$user) { $user = self::create_user($email); }
         if (!$user) { return new WP_Error('registration_failed', 'Could not register this account.', ['status' => 500]); }
         self::register_device((int)$user['id'], $device);
+        $user = self::sync_paybox_license($user);
         $settings = self::settings();
         $payment_url = esc_url_raw($settings['payment_url']);
         $now = time();
@@ -340,6 +382,7 @@ final class TubeMute {
             $settings['reminder_days'] = min(30, absint($_POST['reminder_days'] ?? 3));
             $settings['admin_email'] = sanitize_email(wp_unslash($_POST['admin_email'] ?? ''));
             $settings['payment_url'] = esc_url_raw(wp_unslash($_POST['payment_url'] ?? ''));
+            $settings['paybox_service_id'] = absint($_POST['paybox_service_id'] ?? 0);
             $settings['product_name'] = sanitize_text_field(wp_unslash($_POST['product_name'] ?? 'TubeMute PRO'));
             $settings['webhook_secret'] = sanitize_text_field(wp_unslash($_POST['webhook_secret'] ?? ''));
             $settings['freemius_secret'] = sanitize_text_field(wp_unslash($_POST['freemius_secret'] ?? ''));
@@ -389,7 +432,8 @@ final class TubeMute {
         echo '<table class="form-table"><tr><th>Тестовий період, днів</th><td><input type="number" min="1" max="365" name="trial_days" value="'.esc_attr($settings['trial_days']).'"></td></tr>';
         echo '<tr><th>Нагадувати за, днів</th><td><input type="number" min="0" max="30" name="reminder_days" value="'.esc_attr($settings['reminder_days']).'"></td></tr>';
         echo '<tr><th>Email адміністратора</th><td><input type="email" class="regular-text" name="admin_email" value="'.esc_attr($settings['admin_email']).'"></td></tr>';
-        echo '<tr><th>Посилання на оплату PRO</th><td><input type="url" class="large-text" name="payment_url" value="'.esc_attr($settings['payment_url']).'"></td></tr>';
+        echo '<tr><th>Посилання на оплату PRO (UA Pay Box)</th><td><input type="url" class="large-text" name="payment_url" value="'.esc_attr($settings['payment_url']).'"></td></tr>';
+        echo '<tr><th>ID проєкту UA Pay Box</th><td><input type="number" min="1" name="paybox_service_id" value="'.esc_attr($settings['paybox_service_id']).'"><p class="description">TubeMute автоматично перевіряє таблицю ліцензій UA Pay Box у цій самій базі WordPress. Код UA Pay Box змінювати не потрібно.</p></td></tr>');
         echo '<tr><th>Назва продукту</th><td><input type="text" class="regular-text" name="product_name" value="'.esc_attr($settings['product_name']).'"></td></tr>';
         echo '<tr><th>Секрет webhook</th><td><input type="password" class="regular-text" name="webhook_secret" value="'.esc_attr($settings['webhook_secret']).'" autocomplete="new-password"><p class="description">Для власного платіжного webhook із заголовком X-TubeMute-Secret.</p></td></tr>';
         echo '<tr><th>Freemius Secret Key</th><td><input type="password" class="regular-text" name="freemius_secret" value="'.esc_attr($settings['freemius_secret']).'" autocomplete="new-password"></td></tr>';
