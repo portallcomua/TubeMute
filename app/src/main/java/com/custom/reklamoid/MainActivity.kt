@@ -203,6 +203,11 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun youtubeStartUrl(): String {
+        val isAndroidTv = packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
+        return if (isAndroidTv) "https://www.youtube.com/tv" else "https://m.youtube.com"
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     private fun initYouTubePlayer() {
         customView = null
@@ -243,7 +248,7 @@ class MainActivity : Activity() {
                 injectAdSkipper()
             }
         }
-        player.loadUrl("https://www.youtube.com/tv")
+        player.loadUrl(youtubeStartUrl())
     }
 
     private fun immersiveSystemUiFlags(): Int = (
