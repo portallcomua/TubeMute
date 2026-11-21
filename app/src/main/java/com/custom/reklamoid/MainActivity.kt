@@ -1,5 +1,6 @@
 package com.custom.reklamoid
 
+import android.accounts.AccountManager
 import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.app.Activity
@@ -30,6 +31,7 @@ class MainActivity : Activity() {
         private const val DEFAULT_PAYMENT_URL = ""
         private const val PREFS = "TubeMutePrefs"
         private const val EMAIL_KEY = "user_email"
+        private const val REQUEST_GOOGLE_ACCOUNT = 4102
     }
 
     private var webView: WebView? = null
@@ -50,10 +52,67 @@ class MainActivity : Activity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         currentEmail = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(EMAIL_KEY, "") ?: ""
-        if (currentEmail.isBlank()) showRegistrationDialog() else checkAccess()
+        if (currentEmail.isBlank()) {
+            showRegistrationChoice()
+        } else {
+            checkAccess()
+        }
     }
 
-    private fun showRegistrationDialog() {
+    private fun showRegistrationChoice() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.reg_title)
+            .setMessage(R.string.reg_message)
+            .setPositiveButton(R.string.btn_use_google_account) { _, _ -> chooseGoogleAccount() }
+            .setNeutralButton(R.string.btn_enter_email) { _, _ -> showManualEmailDialog() }
+            .setNegativeButton(R.string.btn_exit) { _, _ -> finish() }
+            .setCancelable(false)
+            .show()
+    }
+
+    @Suppress("DEPRECATION")
+    private fun chooseGoogleAccount() {
+        try {
+            // Uses Android's own account picker. No broad contacts/accounts permission is requested.
+            val picker = AccountManager.newChooseAccountIntent(
+                null,
+                arrayOf("com.google"),
+                true,
+                getString(R.string.google_account_description),
+                null,
+                null,
+                null
+            )
+            startActivityForResult(picker, REQUEST_GOOGLE_ACCOUNT)
+        } catch (_: Exception) {
+            Toast.makeText(this, R.string.google_account_unavailable, Toast.LENGTH_LONG).show()
+            showManualEmailDialog()
+        }
+    }
+
+    @Deprecated("Deprecated in Android")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQUEST_GOOGLE_ACCOUNT) return
+
+        val selectedEmail = if (resultCode == RESULT_OK) {
+            data?.getStringExtra(AccountManager.KEY_ACCOUNT_NAME)
+                ?.trim()
+                ?.lowercase(Locale.ROOT)
+                .orEmpty()
+        } else {
+            ""
+        }
+
+        if (isValidEmail(selectedEmail)) {
+            saveEmailAndCheckAccess(selectedEmail)
+        } else {
+            // Cancelled picker, missing Google account service, or no account selected.
+            showManualEmailDialog()
+        }
+    }
+
+    private fun showManualEmailDialog() {
         val input = EditText(this).apply {
             hint = getString(R.string.reg_hint)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
@@ -63,23 +122,32 @@ class MainActivity : Activity() {
         }
         AlertDialog.Builder(this)
             .setTitle(R.string.reg_title)
-            .setMessage(R.string.reg_message)
+            .setMessage(R.string.manual_email_message)
             .setView(input)
             .setCancelable(false)
             .setPositiveButton(R.string.btn_continue) { _, _ ->
                 val email = input.text.toString().trim().lowercase(Locale.ROOT)
-                if (!email.matches(Regex("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$"))) {
+                if (!isValidEmail(email)) {
                     Toast.makeText(this, R.string.err_invalid_email, Toast.LENGTH_LONG).show()
-                    showRegistrationDialog()
+                    showManualEmailDialog()
                 } else {
-                    currentEmail = email
-                    getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
-                        .putString(EMAIL_KEY, email).apply()
-                    checkAccess()
+                    saveEmailAndCheckAccess(email)
                 }
             }
             .setNegativeButton(R.string.btn_exit) { _, _ -> finish() }
             .show()
+    }
+
+    private fun isValidEmail(email: String): Boolean {
+        return email.matches(Regex("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$"))
+    }
+
+    private fun saveEmailAndCheckAccess(email: String) {
+        currentEmail = email
+        getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString(EMAIL_KEY, email)
+            .apply()
+        checkAccess()
     }
 
     private fun postCheck(): JSONObject {
