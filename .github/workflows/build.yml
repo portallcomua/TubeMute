@@ -118,7 +118,7 @@ jobs:
           grep -Fq "Verified using v2 scheme (APK Signature Scheme v2): true" apk-signature-report.txt
 
           "$AAPT" dump badging "$APK" > apk-info.txt
-          grep -q "package: name='com.custom.reklamoid' versionCode='12' versionName='1.7.4'" apk-info.txt
+          grep -q "package: name='com.custom.reklamoid' versionCode='13' versionName='2.0.0'" apk-info.txt
           grep -q "sdkVersion:'19'" apk-info.txt
           grep -q "targetSdkVersion:'28'" apk-info.txt
           grep -q "launchable-activity" apk-info.txt
@@ -156,7 +156,7 @@ jobs:
       - name: Upload standalone signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: TubeMute-1.7.4-APK
+          name: TubeMute-2.0.0-APK
           path: |
             TubeMute.apk
             TubeMute.apk.sha256
@@ -166,7 +166,7 @@ jobs:
       - name: Upload USB installer ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: TubeMute-1.7.4-USB
+          name: TubeMute-2.0.0-USB
           path: TubeMute-USB-Installer.zip
           if-no-files-found: error
           retention-days: 90
@@ -174,8 +174,8 @@ jobs:
       - name: Publish downloadable GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.7.4
-          name: TubeMute 1.7.4 — Android TV and Android
+          tag_name: v2.0.0
+          name: TubeMute 2.0.0 — Android TV and Android
           target_commitish: ${{ github.sha }}
           generate_release_notes: true
           make_latest: true
