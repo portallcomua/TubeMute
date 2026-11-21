@@ -1,3 +1,4 @@
+
 <resources>
     <string name="app_name">TubeMute</string>
     <string name="reg_title">Activate TubeMute</string>
@@ -7,18 +8,19 @@
     <string name="btn_exit">Exit</string>
     <string name="err_invalid_email">Enter a valid Gmail address.</string>
     <string name="checking_access">Checking access...</string>
-    <string name="trial_started">Your 7-day free trial has started.</string>
     <string name="trial_days_left">Free trial. Days remaining: %1$d</string>
     <string name="access_activated">Access activated.</string>
     <string name="paywall_title">Trial period ended</string>
-    <string name="paywall_message">To continue using TubeMute for one year (299 UAH), press Pay. Access will be enabled immediately. IMPORTANT: include this Gmail address in your payment details, or access may be revoked.</string>
+    <string name="paywall_message">To continue using TubeMute for one year (299 UAH), press Pay. Access will be enabled immediately. Include this Gmail address in your payment details: %1$s</string>
     <string name="btn_pay">Pay 299 UAH / year</string>
-    <string name="btn_copy_email">Copy Gmail</string>
-    <string name="btn_refresh">I have paid / Check access</string>
-    <string name="email_copied">Gmail copied.</string>
+    <string name="btn_refresh">Check access</string>
     <string name="activating_access">Activating access...</string>
     <string name="payment_link_error">Could not open the payment link.</string>
+    <string name="payment_reminder">Please complete your payment and include your Gmail address in the payment details.</string>
     <string name="connection_error_title">Connection error</string>
-    <string name="connection_error_message">Could not verify access with the server. Check your internet connection and try again. %1$s</string>
+    <string name="connection_error_message">Could not verify access with the server. Check your internet connection and try again. Details: %1$s</string>
     <string name="btn_retry">Retry</string>
+    <string name="unknown_server_response">The server returned an unknown response.</string>
+    <string name="unknown_error">Unknown error.</string>
+    <string name="activation_failed">The server could not activate access.</string>
 </resources>
