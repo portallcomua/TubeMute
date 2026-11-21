@@ -14,24 +14,21 @@ TubeMute is an Android TV / Google TV / Android application with server-managed 
 2. Keep the existing plugin active; the updated code creates or upgrades its database tables automatically.
 3. In WordPress admin, open **TubeMute**.
 4. Set trial length, reminder lead time, administrator email and the PRO checkout URL.
-5. Set a long random webhook secret. The payment integration must send it in the `X-TubeMute-Secret` header.
-6. Add any existing users manually in the TubeMute admin page, including lifetime users.
+5. Enter the UA Pay Box project/service ID. TubeMute reads the existing `upb_licenses` table from the same WordPress database, so the current Pay Box plugin can remain unchanged.
+6. Set the Pay Box checkout URL as the PRO payment link.
+7. Add any existing users manually in the TubeMute admin page, including lifetime users.
 
 The Android app calls:
 
 - `POST /wp-json/tubemute/v1/check` — registers a new email, checks trial/PRO access and returns the checkout URL.
-- `POST /wp-json/tubemute/v1/webhook` — receives authenticated payment entitlement events.
+- `POST /wp-json/tubemute/v1/webhook` — optional authenticated payment relay.
+- `POST /wp-json/tubemute/v1/freemius/webhook` — optional direct signed Freemius integration. The primary no-code-change integration is reading UA Pay Box's existing license table.
 
 The app never receives a payment secret and cannot grant itself PRO. The old GitHub `users.txt` list and GitHub read token are no longer part of the access flow.
 
 ## Payment webhook contract
 
-TubeMute supports two server-side webhook routes:
-
-- `/wp-json/tubemute/v1/freemius/webhook` — native Freemius-style signed webhook. Configure the Freemius Secret Key and Product ID in TubeMute settings. The endpoint validates the `X-Signature` HMAC-SHA256 header against the raw request body, then checks the configured product and optional plan IDs before changing access.
-- `/wp-json/tubemute/v1/webhook` — custom/Pay Box relay webhook. It requires `X-TubeMute-Secret` and a JSON body with the customer's `email` and an event. Paid/active events grant PRO; cancellation/revocation events remove paid access. Default entitlement is one year; `expires_at` or `lifetime: true` may be supplied.
-
-Configure the Freemius webhook to send events to the first URL. Configure the Pay Box project checkout URL as TubeMute's payment URL. The Pay Box plugin itself is not modified. Before launch, test that the Freemius event contains the expected customer email and configured product/plan identifiers.
+UA Pay Box remains the payment processor and continues receiving Freemius webhooks through its existing endpoint. TubeMute reads the resulting license row from the same WordPress database using the configured service ID and customer email. This is the preferred integration because the UA Pay Box plugin code does not need to be changed. Optional direct Freemius and custom webhook endpoints are also available, but are not required for the standard setup.
 
 ## Android compatibility
 
