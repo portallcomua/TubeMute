@@ -76,6 +76,7 @@ class MainActivity : Activity() {
             // Uses Android's own account picker. No broad contacts/accounts permission is requested.
             val picker = AccountManager.newChooseAccountIntent(
                 null,
+                null,
                 arrayOf("com.google"),
                 true,
                 getString(R.string.google_account_description),
