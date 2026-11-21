@@ -25,8 +25,8 @@
     <string name="payment_link_error">Не вдалося відкрити посилання на оплату.</string>
     <string name="blocked_title">Доступ призупинено</string>
     <string name="blocked_message">Доступ до цього облікового запису призупинено. Зверніться до адміністратора.</string>
-    <string name="connection_error_title">Помилка з'єднання</string>
-    <string name="connection_error_message">Не вдалося перевірити доступ на сервері. Перевірте інтернет-з'єднання та спробуйте ще раз. Деталі: %1$s</string>
+    <string name="connection_error_title">Помилка з\'єднання</string>
+    <string name="connection_error_message">Не вдалося перевірити доступ на сервері. Перевірте інтернет-з\'єднання та спробуйте ще раз. Деталі: %1$s</string>
     <string name="btn_retry">Повторити</string>
     <string name="unknown_server_response">Сервер повернув невідому відповідь.</string>
     <string name="unknown_error">Невідома помилка.</string>
