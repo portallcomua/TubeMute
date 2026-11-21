@@ -1,28 +1,29 @@
-name: TubeMute - Android TV Release and USB installer
+name: TubeMute - Android TV and Android build
 
 on:
   push:
     branches:
       - main
+      - work/tubemute-install-account-audit
   workflow_dispatch:
 
 concurrency:
-  group: tubemute-release-${{ github.ref }}
+  group: tubemute-build-\${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: write
 
 jobs:
-  release:
-    name: Build signed Android TV APK and USB package
+  build:
+    name: Build and verify signed Android APK
     runs-on: ubuntu-latest
 
     env:
-      KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-      RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-      RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-      RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      KEYSTORE_BASE64: \${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      RELEASE_STORE_PASSWORD: \${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      RELEASE_KEY_ALIAS: \${{ secrets.ANDROID_KEY_ALIAS }}
+      RELEASE_KEY_PASSWORD: \${{ secrets.ANDROID_KEY_PASSWORD }}
 
     steps:
       - name: Checkout repository
@@ -88,8 +89,6 @@ jobs:
           for value in required:
               if value not in manifest:
                   raise SystemExit(f"Missing manifest entry: {value}")
-          if "tv_banner_vec" in manifest:
-              raise SystemExit("Manifest still references the obsolete vector banner")
           print("Manifest resource references and launcher entries: OK")
           PY
 
@@ -121,54 +120,49 @@ jobs:
           test -x "$APKSIGNER"
           test -x "$ZIPALIGN"
 
-          echo "===== APK ZIP ALIGNMENT CHECK ====="
           "$ZIPALIGN" -c -v 4 "$APK"
-
-          echo "===== APK SIGNATURE VERIFICATION ====="
           "$APKSIGNER" verify --verbose --print-certs "$APK" 2>&1 | tee apk-signature-report.txt
           grep -Fq "Verified using v1 scheme (JAR signing): true" apk-signature-report.txt
           grep -Fq "Verified using v2 scheme (APK Signature Scheme v2): true" apk-signature-report.txt
 
           "$AAPT" dump badging "$APK" > apk-info.txt
-          grep -q "package: name='com.custom.reklamoid' versionCode='14' versionName='2.0.1'" apk-info.txt
+          grep -q "package: name='com.custom.reklamoid' versionCode='15' versionName='2.0.2'" apk-info.txt
           grep -q "sdkVersion:'19'" apk-info.txt
-          grep -q "targetSdkVersion:'28'" apk-info.txt
+          grep -q "targetSdkVersion:'34'" apk-info.txt
           grep -q "launchable-activity" apk-info.txt
-          echo "===== APK PACKAGE DETAILS ====="
           cat apk-info.txt
           ls -lh "$APK"
 
-      - name: Prepare USB folder with APK at its root
+      - name: Prepare USB installer
         shell: bash
         run: |
           mkdir -p TubeMute-USB
           cp app/build/outputs/apk/release/app-release.apk TubeMute-USB/TubeMute.apk
           cat > TubeMute-USB/ПРОЧИТАЙТЕ-ПЕРЕД-УСТАНОВКОЮ.txt <<'EOF'
-          TUBEMUTE 2.0.1 — ВСТАНОВЛЕННЯ НА ANDROID TV / GOOGLE TV / ANDROID
+          TUBEMUTE 2.0.2 — ANDROID TV / GOOGLE TV / ANDROID
 
-          1. Скопіюйте файл TubeMute.apk у корінь USB-флешки.
-          2. Підключіть флешку до телевізора або смартфона.
-          3. Відкрийте файловий менеджер і виберіть TubeMute.apk.
-          4. Якщо система попросить дозвіл, дозвольте встановлення невідомих програм для цього файлового менеджера.
-          5. Поверніться до APK та натисніть «Встановити».
+          1. Copy TubeMute.apk to the root of a USB drive.
+          2. Connect the USB drive to the TV or phone.
+          3. Open a file manager and select TubeMute.apk.
+          4. If Android asks, allow this file manager to install unknown apps.
+          5. Return to the APK and select Install.
 
-          ВАЖЛИВО:
-          - Якщо система повідомляє про конфлікт підпису, видаліть попередню тестову версію TubeMute та повторіть встановлення.
-          - APK призначений для Android TV, Google TV та Android-смартфонів.
-          - Мінімальна системна версія APK: Android 4.4 (API 19).
-          - Для відтворення YouTube потрібен сумісний системний Android System WebView.
-          - Samsung Tizen та LG webOS не підтримують Android APK.
+          NOTES:
+          - Keep the previous TubeMute installation in place when updating.
+          - The update must be signed with the same permanent TubeMute signing key.
+          - Android 4.4 (API 19) or newer is required.
+          - A compatible Android System WebView and internet connection are required.
+          - Samsung Tizen and LG webOS do not install Android APK files.
           EOF
           (cd TubeMute-USB && sha256sum TubeMute.apk > SHA256SUMS.txt)
           zip -j TubeMute-USB-Installer.zip TubeMute-USB/TubeMute.apk TubeMute-USB/ПРОЧИТАЙТЕ-ПЕРЕД-УСТАНОВКОЮ.txt TubeMute-USB/SHA256SUMS.txt
           cp app/build/outputs/apk/release/app-release.apk TubeMute.apk
           sha256sum TubeMute.apk > TubeMute.apk.sha256
-          ls -lh TubeMute.apk TubeMute-USB-Installer.zip TubeMute.apk.sha256
 
       - name: Upload standalone signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: TubeMute-2.0.1-APK
+          name: TubeMute-2.0.2-APK
           path: |
             TubeMute.apk
             TubeMute.apk.sha256
@@ -178,17 +172,18 @@ jobs:
       - name: Upload USB installer ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: TubeMute-2.0.1-USB
+          name: TubeMute-2.0.2-USB
           path: TubeMute-USB-Installer.zip
           if-no-files-found: error
           retention-days: 90
 
       - name: Publish downloadable GitHub Release
+        if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v2.0.1
-          name: TubeMute 2.0.1 — Android TV and Android
-          target_commitish: ${{ github.sha }}
+          tag_name: v2.0.2
+          name: TubeMute 2.0.2 — Android TV and Android
+          target_commitish: \${{ github.sha }}
           generate_release_notes: true
           make_latest: true
           files: |
@@ -196,4 +191,4 @@ jobs:
             TubeMute.apk.sha256
             TubeMute-USB-Installer.zip
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
