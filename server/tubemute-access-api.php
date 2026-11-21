@@ -274,6 +274,11 @@ final class TubeMute {
             strpos($event, 'deactiv') !== false || strpos($event, 'dispute.lost') !== false ||
             !empty($license['is_cancelled']) || !empty($license['is_deleted']) ||
             ($expires && $expires <= time()));
+        $paid_event = (strpos($event, 'license') !== false || strpos($event, 'payment') !== false ||
+            strpos($event, 'subscription') !== false || strpos($event, 'purchase') !== false);
+        if (!$revoked && !$paid_event) {
+            return rest_ensure_response(['received' => true, 'updated' => false, 'reason' => 'event_not_related_to_entitlement']);
+        }
         global $wpdb;
         $user = self::get_user($email);
         if (!$user) { $user = self::create_user($email); }
