@@ -132,7 +132,7 @@ jobs:
           mkdir -p TubeMute-USB
           cp app/build/outputs/apk/release/app-release.apk TubeMute-USB/TubeMute.apk
           cat > TubeMute-USB/ПРОЧИТАЙТЕ-ПЕРЕД-УСТАНОВКОЮ.txt <<'EOF'
-          TUBEMUTE 1.7.4 — ВСТАНОВЛЕННЯ НА ANDROID TV / GOOGLE TV / ANDROID
+          TUBEMUTE 2.0.0 — ВСТАНОВЛЕННЯ НА ANDROID TV / GOOGLE TV / ANDROID
 
           1. Скопіюйте файл TubeMute.apk у корінь USB-флешки.
           2. Підключіть флешку до телевізора або смартфона.
