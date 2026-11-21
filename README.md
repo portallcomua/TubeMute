@@ -2,6 +2,8 @@
 
 TubeMute is an Android TV application based on Android WebView.
 
+Current release: 1.7.2. Advertisement audio is muted without forcibly seeking the video timeline.
+
 ## Features
 
 - Android TV launcher support
