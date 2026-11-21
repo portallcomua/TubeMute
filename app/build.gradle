@@ -1,3 +1,4 @@
+
 plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
@@ -9,10 +10,10 @@ android {
 
     defaultConfig {
         applicationId "com.custom.reklamoid"
-        minSdk 21
-        targetSdk 30
-        versionCode 5
-        versionName "1.4"
+        minSdk 19
+        targetSdk 28
+        versionCode 6
+        versionName "1.5"
     }
 
     signingConfigs {
@@ -36,6 +37,7 @@ android {
         release {
             minifyEnabled false
             shrinkResources false
+
             if (project.hasProperty("RELEASE_STORE_FILE")) {
                 signingConfig signingConfigs.release
             }
@@ -43,12 +45,12 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
     }
 
     kotlinOptions {
-        jvmTarget = '17'
+        jvmTarget = '1.8'
     }
 
     lint {
