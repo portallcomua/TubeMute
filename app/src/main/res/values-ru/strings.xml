@@ -1,25 +1,28 @@
 <resources>
     <string name="app_name">TubeMute</string>
     <string name="reg_title">Активация TubeMute</string>
-    <string name="reg_message">Введите адрес Gmail для начала 7-дневного бесплатного периода.</string>
+    <string name="reg_message">Введите адрес email для создания аккаунта и начала бесплатного пробного периода.</string>
     <string name="reg_hint">yourname@gmail.com</string>
     <string name="btn_continue">Продолжить</string>
     <string name="btn_exit">Выход</string>
-    <string name="err_invalid_email">Введите правильный адрес Gmail.</string>
+    <string name="err_invalid_email">Введите правильный адрес email.</string>
     <string name="checking_access">Проверяем доступ...</string>
     <string name="trial_days_left">Бесплатный период. Осталось дней: %1$d</string>
     <string name="access_activated">Доступ активирован.</string>
+    <string name="trial_reminder_title">Напоминание о TubeMute PRO</string>
+    <string name="trial_reminder_message">Ваш бесплатный период скоро завершится. Осталось дней: %1$d. Вы можете приобрести PRO сейчас или продолжить просмотр до окончания теста.</string>
+    <string name="btn_continue_watching">Продолжить просмотр</string>
     <string name="paywall_title">Пробный период завершён</string>
-    <string name="paywall_message">Чтобы пользоваться TubeMute ещё один год (299 грн), нажмите «Оплатить». Обязательно укажите этот адрес Gmail в данных платежа: %1$s</string>
-    <string name="btn_pay">Оплатить 299 грн / год</string>
+    <string name="paywall_message">Ваш пробный период завершился. Чтобы продолжить пользоваться TubeMute, приобретите PRO для адреса: %1$s</string>
+    <string name="btn_pay">Купить PRO</string>
     <string name="btn_refresh">Проверить доступ</string>
-    <string name="activating_access">Активируем доступ...</string>
+    <string name="payment_not_configured">Администратор ещё не настроил ссылку на оплату. Попробуйте позже.</string>
     <string name="payment_link_error">Не удалось открыть ссылку для оплаты.</string>
-    <string name="payment_reminder">Завершите оплату и обязательно укажите свой Gmail в данных платежа.</string>
+    <string name="blocked_title">Доступ приостановлен</string>
+    <string name="blocked_message">Доступ к этой учётной записи приостановлен. Обратитесь к администратору.</string>
     <string name="connection_error_title">Ошибка соединения</string>
     <string name="connection_error_message">Не удалось проверить доступ на сервере. Проверьте интернет и попробуйте снова. Подробности: %1$s</string>
     <string name="btn_retry">Повторить</string>
     <string name="unknown_server_response">Сервер вернул неизвестный ответ.</string>
     <string name="unknown_error">Неизвестная ошибка.</string>
-    <string name="activation_failed">Сервер не смог активировать доступ.</string>
 </resources>
