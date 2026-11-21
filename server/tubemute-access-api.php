@@ -158,7 +158,7 @@ final class TubeMute {
         $service_id = absint($settings['paybox_service_id']);
         if (!$service_id || !$user) { return $user; }
         $table = $wpdb->prefix . 'upb_licenses';
-        $exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table));
+        $exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $wpdb->esc_like($table)));
         if ($exists !== $table) { return $user; }
         $license = $wpdb->get_row($wpdb->prepare(
             "SELECT status, expires FROM $table WHERE service_id=%d AND email=%s ORDER BY updated_at DESC, id DESC LIMIT 1",
