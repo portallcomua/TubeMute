@@ -391,10 +391,11 @@ class MainActivity : AppCompatActivity() {
                         var video = document.querySelector('video');
 
                         if (ad && video) {
-                            // Mute advertisement audio without seeking or interrupting playback.
-                            video.muted = true;
-                        } else if (video && video.muted) {
-                            video.muted = false;
+                            // Skip the advertisement immediately by seeking to its end.
+                            var duration = video.duration;
+                            if (isFinite(duration) && duration > 0) {
+                                video.currentTime = duration;
+                            }
                         }
                     } catch (e) {}
                 }, 500);
