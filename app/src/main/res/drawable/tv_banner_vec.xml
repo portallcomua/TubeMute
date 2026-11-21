@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<vector xmlns:android="http://android.com"
+<vector xmlns:android="REPLACE_NS"
     android:width="320dp"
     android:height="180dp"
     android:viewportWidth="320"
