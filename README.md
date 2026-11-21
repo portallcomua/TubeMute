@@ -1,3 +1,14 @@
+# TubeMute 2.0.2
+
+## 2.0.2 candidate changes
+
+- First-run setup offers the Android system Google-account picker; selected account email is used only as the TubeMute account email.
+- Manual email entry remains available when the account picker is unavailable or the user wants another billing email.
+- The confirmed email is stored locally and reused for server-side trial, PRO and payment checks.
+- The account picker does not sign the user into YouTube and does not add broad account/contact permissions.
+- Application ID and permanent release signing configuration are retained for in-place upgrades.
+- Target SDK updated to API 34 while retaining minimum API 19.
+
 # TubeMute 2.0.0
 
 TubeMute is an Android TV / Google TV / Android application with server-managed access.
