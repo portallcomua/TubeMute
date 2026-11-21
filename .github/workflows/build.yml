@@ -81,7 +81,7 @@ jobs:
           AAPT="$(find "$ANDROID_HOME/build-tools" -name aapt | sort | tail -n 1)"
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort | tail -n 1)"
           "$AAPT" dump badging "$APK" > apk-info.txt
-          grep -q "package: name='com.custom.reklamoid' versionCode='10' versionName='1.7.2'" apk-info.txt
+          grep -q "package: name='com.custom.reklamoid' versionCode='11' versionName='1.7.3'" apk-info.txt
           grep -q "sdkVersion:'19'" apk-info.txt
           grep -q "targetSdkVersion:'28'" apk-info.txt
           grep -q "launchable-activity" apk-info.txt
@@ -95,7 +95,7 @@ jobs:
           mkdir -p TubeMute-USB
           cp app/build/outputs/apk/release/app-release.apk TubeMute-USB/TubeMute.apk
           cat > TubeMute-USB/ПРОЧИТАЙТЕ-ПЕРЕД-УСТАНОВКОЮ.txt <<'EOF'
-          TUBEMUTE 1.7.2 — ВСТАНОВЛЕННЯ НА ANDROID TV / GOOGLE TV
+          TUBEMUTE 1.7.3 — ВСТАНОВЛЕННЯ НА ANDROID TV / GOOGLE TV
 
           1. Скопіюйте файл TubeMute.apk у корінь USB-флешки.
           2. Підключіть флешку до телевізора.
@@ -124,7 +124,7 @@ jobs:
       - name: Upload standalone signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: TubeMute-1.7.2-APK
+          name: TubeMute-1.7.3-APK
           path: |
             TubeMute.apk
             TubeMute.apk.sha256
@@ -134,7 +134,7 @@ jobs:
       - name: Upload USB installer ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: TubeMute-1.7.2-USB
+          name: TubeMute-1.7.3-USB
           path: TubeMute-USB-Installer.zip
           if-no-files-found: error
           retention-days: 90
@@ -142,8 +142,8 @@ jobs:
       - name: Publish downloadable GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.7.2
-          name: TubeMute 1.7.2 — Android TV
+          tag_name: v1.7.3
+          name: TubeMute 1.7.3 — Android TV
           target_commitish: ${{ github.sha }}
           generate_release_notes: true
           make_latest: true
