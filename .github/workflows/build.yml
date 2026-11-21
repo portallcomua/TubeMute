@@ -35,28 +35,36 @@ jobs:
         with:
           gradle-version: '8.4'
 
-      - name: Validate XML namespaces
+      - name: Validate project files
         run: |
-          grep -q 'schemas.android.com/apk/res/android' app/src/main/AndroidManifest.xml
-          grep -q 'schemas.android.com/apk/res/android' app/src/main/res/drawable/tv_banner_vec.xml
+          test -f app/src/main/res/drawable/tv_banner.png
+          test -f app/src/main/res/drawable/ic_launcher.png
 
           if grep -R -nE 'REPLACE_NS|ВАШ_ЛОГІН' app/src/main; then
             echo "ERROR: Unreplaced placeholder found."
             exit 1
           fi
 
-      - name: Build debug APK
+      - name: Build universal debug APK
         run: gradle --no-daemon clean assembleDebug
 
-      - name: Verify debug APK
+      - name: Verify APK
         run: |
-          test -s app/build/outputs/apk/debug/app-debug.apk
-          ls -lh app/build/outputs/apk/debug/app-debug.apk
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          ls -lh "$APK"
+
+          AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt | sort | tail -n 1)
+          "$AAPT" dump badging "$APK" > apk-info.txt
+          cat apk-info.txt
+
+          grep -q "package: name='com.custom.reklamoid'" apk-info.txt
+          grep -q "sdkVersion:'19'" apk-info.txt
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: TubeMute-TV-APK
+          name: TubeMute-TV-APK-Android-4.4+
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
