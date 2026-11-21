@@ -10,7 +10,7 @@
     <string name="trial_days_left">Free trial. Days remaining: %1$d</string>
     <string name="access_activated">Access activated.</string>
     <string name="paywall_title">Trial period ended</string>
-    <string name="paywall_message">To continue using TubeMute for one year (299 UAH), press Pay. Access will be enabled immediately. Include this Gmail address in your payment details: %1$s</string>
+    <string name="paywall_message">To continue using TubeMute for one year (299 UAH), press Pay. Include this Gmail address in your payment details: %1$s</string>
     <string name="btn_pay">Pay 299 UAH / year</string>
     <string name="btn_refresh">Check access</string>
     <string name="activating_access">Activating access...</string>
