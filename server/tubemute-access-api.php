@@ -37,6 +37,9 @@ final class TubeMute {
             'payment_url' => '',
             'product_name' => 'TubeMute PRO',
             'webhook_secret' => '',
+            'freemius_secret' => '',
+            'freemius_product_id' => '',
+            'freemius_plan_id' => '',
             'currency_label' => 'PRO',
         ];
     }
@@ -89,6 +92,9 @@ final class TubeMute {
         ]);
         register_rest_route('tubemute/v1', '/webhook', [
             'methods' => 'POST', 'callback' => [__CLASS__, 'webhook'], 'permission_callback' => '__return_true'
+        ]);
+        register_rest_route('tubemute/v1', '/freemius/webhook', [
+            'methods' => 'POST', 'callback' => [__CLASS__, 'freemius_webhook'], 'permission_callback' => '__return_true'
         ]);
     }
 
@@ -236,6 +242,59 @@ final class TubeMute {
         return rest_ensure_response(['received' => true, 'updated' => true, 'status' => $lifetime ? 'licensed' : 'licensed', 'until' => $lifetime ? 'LIFETIME' : $until]);
     }
 
+
+    public static function freemius_webhook(WP_REST_Request $request) {
+        $settings = self::settings();
+        $secret = (string)$settings['freemius_secret'];
+        $signature = trim((string)$request->get_header('x-signature'));
+        $signature = preg_replace('/^sha256=/i', '', $signature);
+        $raw = $request->get_body();
+        if (!$secret || !$signature || !hash_equals(hash_hmac('sha256', $raw, $secret), $signature)) {
+            return new WP_Error('invalid_signature', 'Invalid Freemius webhook signature.', ['status' => 401]);
+        }
+        $data = json_decode($raw, true);
+        if (!is_array($data)) { return new WP_Error('invalid_payload', 'Invalid Freemius JSON payload.', ['status' => 400]); }
+        $event_data = isset($data['data']) && is_array($data['data']) ? $data['data'] : $data;
+        $product_id = (string)($data['plugin_id'] ?? ($data['plugin']['id'] ?? ''));
+        $plan_id = (string)($event_data['plan_id'] ?? ($event_data['plan']['id'] ?? ($event_data['license']['plan_id'] ?? ($data['plan_id'] ?? ''))));
+        if (!empty($settings['freemius_product_id']) && $product_id !== (string)$settings['freemius_product_id']) {
+            return new WP_Error('wrong_product', 'Freemius product ID does not match.', ['status' => 403]);
+        }
+        if (!empty($settings['freemius_plan_id']) && $plan_id !== (string)$settings['freemius_plan_id']) {
+            return new WP_Error('wrong_plan', 'Freemius plan ID does not match.', ['status' => 403]);
+        }
+        $event = strtolower((string)($data['type'] ?? ($data['event']['type'] ?? ($data['action'] ?? $request->get_header('x-event')))));
+        $license = isset($event_data['license']) && is_array($event_data['license']) ? $event_data['license'] : $event_data;
+        $email = self::clean_email($data['user']['email'] ?? ($event_data['user']['email'] ?? ($event_data['email'] ?? ($license['email'] ?? ''))));
+        if (!$email) { return new WP_Error('missing_email', 'Freemius event does not contain a customer email.', ['status' => 400]); }
+        $expires_value = $license['expiration'] ?? ($license['expiration_date'] ?? ($license['expires_at'] ?? 0));
+        $expires = is_numeric($expires_value) ? (int)$expires_value : (is_string($expires_value) ? strtotime($expires_value) : 0);
+        $revoked = (strpos($event, 'cancel') !== false || strpos($event, 'delete') !== false ||
+            strpos($event, 'expir') !== false || strpos($event, 'refund') !== false ||
+            strpos($event, 'deactiv') !== false || strpos($event, 'dispute.lost') !== false ||
+            !empty($license['is_cancelled']) || !empty($license['is_deleted']) ||
+            ($expires && $expires <= time()));
+        global $wpdb;
+        $user = self::get_user($email);
+        if (!$user) { $user = self::create_user($email); }
+        if (!$user) { return new WP_Error('user_not_found', 'Could not create TubeMute user.', ['status' => 500]); }
+        if ($revoked) {
+            $wpdb->update(self::table(self::TABLE), [
+                'access_until' => self::date_mysql(time() - 60), 'lifetime' => 0,
+                'source' => 'freemius_revoked', 'updated_at' => self::now_mysql()
+            ], ['id' => (int)$user['id']]);
+            return rest_ensure_response(['received' => true, 'status' => 'revoked', 'email' => $email]);
+        }
+        $until = $expires > time() ? self::date_mysql($expires) : self::date_mysql(time() + 365 * DAY_IN_SECONDS);
+        $wpdb->update(self::table(self::TABLE), [
+            'access_until' => $until, 'lifetime' => 0, 'status' => 'active',
+            'source' => 'freemius', 'updated_at' => self::now_mysql()
+        ], ['id' => (int)$user['id']]);
+        self::mail_user($email, 'TubeMute PRO активовано', 'Freemius підтвердив покупку. Доступ TubeMute PRO активовано.');
+        self::mail_admin('TubeMute: Freemius підтвердив оплату', 'PRO активовано для ' . $email . '.');
+        return rest_ensure_response(['received' => true, 'status' => 'licensed', 'email' => $email, 'until' => $until]);
+    }
+
     public static function send_due_reminders() {
         global $wpdb;
         $settings = self::settings();
@@ -278,6 +337,9 @@ final class TubeMute {
             $settings['payment_url'] = esc_url_raw(wp_unslash($_POST['payment_url'] ?? ''));
             $settings['product_name'] = sanitize_text_field(wp_unslash($_POST['product_name'] ?? 'TubeMute PRO'));
             $settings['webhook_secret'] = sanitize_text_field(wp_unslash($_POST['webhook_secret'] ?? ''));
+            $settings['freemius_secret'] = sanitize_text_field(wp_unslash($_POST['freemius_secret'] ?? ''));
+            $settings['freemius_product_id'] = sanitize_text_field(wp_unslash($_POST['freemius_product_id'] ?? ''));
+            $settings['freemius_plan_id'] = sanitize_text_field(wp_unslash($_POST['freemius_plan_id'] ?? ''));
             update_option(self::OPT, $settings, false);
             echo '<div class="notice notice-success"><p>Налаштування збережено.</p></div>';
         }
@@ -321,7 +383,10 @@ final class TubeMute {
         echo '<tr><th>Email адміністратора</th><td><input type="email" class="regular-text" name="admin_email" value="'.esc_attr($settings['admin_email']).'"></td></tr>';
         echo '<tr><th>Посилання на оплату PRO</th><td><input type="url" class="large-text" name="payment_url" value="'.esc_attr($settings['payment_url']).'"></td></tr>';
         echo '<tr><th>Назва продукту</th><td><input type="text" class="regular-text" name="product_name" value="'.esc_attr($settings['product_name']).'"></td></tr>';
-        echo '<tr><th>Секрет webhook</th><td><input type="password" class="regular-text" name="webhook_secret" value="'.esc_attr($settings['webhook_secret']).'" autocomplete="new-password"><p class="description">Той самий секрет має надсилати платіжний сервіс у заголовку X-TubeMute-Secret.</p></td></tr></table>';
+        echo '<tr><th>Секрет webhook</th><td><input type="password" class="regular-text" name="webhook_secret" value="'.esc_attr($settings['webhook_secret']).'" autocomplete="new-password"><p class="description">Для власного платіжного webhook із заголовком X-TubeMute-Secret.</p></td></tr>';
+        echo '<tr><th>Freemius Secret Key</th><td><input type="password" class="regular-text" name="freemius_secret" value="'.esc_attr($settings['freemius_secret']).'" autocomplete="new-password"></td></tr>';
+        echo '<tr><th>Freemius Product ID</th><td><input type="text" name="freemius_product_id" value="'.esc_attr($settings['freemius_product_id']).'"></td></tr>';
+        echo '<tr><th>Freemius Plan ID (необов’язково)</th><td><input type="text" name="freemius_plan_id" value="'.esc_attr($settings['freemius_plan_id']).'"></td></tr></table>';
         submit_button('Зберегти налаштування', 'primary', 'tm_save_settings');
         echo '</form><p><strong>Webhook URL:</strong> <code>'.esc_html($webhook_url).'</code></p>';
         echo '<hr><h2>Додати або змінити користувача</h2><form method="post">';
