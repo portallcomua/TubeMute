@@ -7,6 +7,7 @@ on:
       - work/tubemute-install-account-audit
       - fix/tubemute-verification-204
       - release/tubemute-206-adskip
+      - fix/tubemute-install-hardening-207
   workflow_dispatch:
 
 concurrency:
@@ -110,7 +111,7 @@ jobs:
             -PRELEASE_KEY_ALIAS="$RELEASE_KEY_ALIAS" \
             -PRELEASE_KEY_PASSWORD="$RELEASE_KEY_PASSWORD"
 
-      - name: Verify APK package, alignment and V1 plus V2 signatures
+      - name: Verify APK package, alignment and V1, V2 plus V3 signatures
         shell: bash
         run: |
           APK="app/build/outputs/apk/release/app-release.apk"
@@ -126,11 +127,12 @@ jobs:
           "$APKSIGNER" verify --verbose --print-certs "$APK" 2>&1 | tee apk-signature-report.txt
           grep -Fq "Verified using v1 scheme (JAR signing): true" apk-signature-report.txt
           grep -Fq "Verified using v2 scheme (APK Signature Scheme v2): true" apk-signature-report.txt
+          grep -Fq "Verified using v3 scheme (APK Signature Scheme v3): true" apk-signature-report.txt
 
           "$AAPT" dump badging "$APK" > apk-info.txt
-          grep -q "package: name='com.custom.reklamoid' versionCode='19' versionName='2.0.6'" apk-info.txt
-          grep -q "sdkVersion:'19'" apk-info.txt
-          grep -q "targetSdkVersion:'28'" apk-info.txt
+          grep -q "package: name='com.custom.reklamoid' versionCode='20' versionName='2.0.7'" apk-info.txt
+          grep -q "sdkVersion:'23'" apk-info.txt
+          grep -q "targetSdkVersion:'34'" apk-info.txt
           grep -q "launchable-activity" apk-info.txt
           cat apk-info.txt
           ls -lh "$APK"
@@ -173,7 +175,7 @@ jobs:
           mkdir -p TubeMute-USB
           cp app/build/outputs/apk/release/app-release.apk TubeMute-USB/TubeMute.apk
           cat > TubeMute-USB/ПРОЧИТАЙТЕ-ПЕРЕД-УСТАНОВКОЮ.txt <<'EOF'
-          TUBEMUTE 2.0.6 — ANDROID TV / GOOGLE TV / ANDROID
+          TUBEMUTE 2.0.7 — ANDROID TV / GOOGLE TV / ANDROID
 
           1. Copy TubeMute.apk to the root of a USB drive.
           2. Connect the USB drive to the TV or phone.
@@ -184,7 +186,7 @@ jobs:
           NOTES:
           - Keep the previous TubeMute installation in place when updating.
           - The update must be signed with the same permanent TubeMute signing key.
-          - Android 4.4 (API 19) or newer is required.
+          - Android 6.0 (API 23) or newer is required.
           - A compatible Android System WebView and internet connection are required.
           - Samsung Tizen and LG webOS do not install Android APK files.
           EOF
@@ -196,7 +198,7 @@ jobs:
       - name: Upload standalone signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: TubeMute-2.0.6-APK
+          name: TubeMute-2.0.7-APK
           path: |
             TubeMute.apk
             TubeMute.apk.sha256
@@ -206,7 +208,7 @@ jobs:
       - name: Upload USB installer ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: TubeMute-2.0.6-USB
+          name: TubeMute-2.0.7-USB
           path: TubeMute-USB-Installer.zip
           if-no-files-found: error
           retention-days: 90
@@ -215,8 +217,8 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v2.0.6
-          name: TubeMute 2.0.6 — Android TV and Android
+          tag_name: v2.0.7
+          name: TubeMute 2.0.7 — Android TV and Android
           target_commitish: ${{ github.sha }}
           generate_release_notes: true
           make_latest: true
