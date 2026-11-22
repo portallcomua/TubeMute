@@ -6,6 +6,7 @@ on:
       - main
       - work/tubemute-install-account-audit
       - fix/tubemute-verification-204
+      - release/tubemute-206-adskip
   workflow_dispatch:
 
 concurrency:
@@ -127,7 +128,7 @@ jobs:
           grep -Fq "Verified using v2 scheme (APK Signature Scheme v2): true" apk-signature-report.txt
 
           "$AAPT" dump badging "$APK" > apk-info.txt
-          grep -q "package: name='com.custom.reklamoid' versionCode='17' versionName='2.0.4'" apk-info.txt
+          grep -q "package: name='com.custom.reklamoid' versionCode='19' versionName='2.0.6'" apk-info.txt
           grep -q "sdkVersion:'19'" apk-info.txt
           grep -q "targetSdkVersion:'28'" apk-info.txt
           grep -q "launchable-activity" apk-info.txt
@@ -172,7 +173,7 @@ jobs:
           mkdir -p TubeMute-USB
           cp app/build/outputs/apk/release/app-release.apk TubeMute-USB/TubeMute.apk
           cat > TubeMute-USB/ПРОЧИТАЙТЕ-ПЕРЕД-УСТАНОВКОЮ.txt <<'EOF'
-          TUBEMUTE 2.0.4 — ANDROID TV / GOOGLE TV / ANDROID
+          TUBEMUTE 2.0.6 — ANDROID TV / GOOGLE TV / ANDROID
 
           1. Copy TubeMute.apk to the root of a USB drive.
           2. Connect the USB drive to the TV or phone.
@@ -195,7 +196,7 @@ jobs:
       - name: Upload standalone signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: TubeMute-2.0.4-APK
+          name: TubeMute-2.0.6-APK
           path: |
             TubeMute.apk
             TubeMute.apk.sha256
@@ -205,7 +206,7 @@ jobs:
       - name: Upload USB installer ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: TubeMute-2.0.4-USB
+          name: TubeMute-2.0.6-USB
           path: TubeMute-USB-Installer.zip
           if-no-files-found: error
           retention-days: 90
@@ -214,8 +215,8 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v2.0.4
-          name: TubeMute 2.0.4 — Android TV and Android
+          tag_name: v2.0.6
+          name: TubeMute 2.0.6 — Android TV and Android
           target_commitish: ${{ github.sha }}
           generate_release_notes: true
           make_latest: true
