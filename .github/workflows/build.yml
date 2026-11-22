@@ -139,9 +139,12 @@ jobs:
           set -euo pipefail
           OLD_APK="$(mktemp --suffix=.apk)"
           trap 'rm -f "$OLD_APK" old-signature-report.txt new-signature-report.txt old-apk-info.txt' EXIT
-          curl --fail --location --silent --show-error \
-            "https://github.com/portallcomua/TubeMute/releases/download/v1.7.3/TubeMute.apk" \
-            --output "$OLD_APK"
+          mkdir -p "$RUNNER_TEMP/tubemute-old-release"
+          gh release download v1.7.3 \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "TubeMute.apk" \
+            --dir "$RUNNER_TEMP/tubemute-old-release"
+          cp "$RUNNER_TEMP/tubemute-old-release/TubeMute.apk" "$OLD_APK"
 
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort | tail -n 1)"
           AAPT="$(find "$ANDROID_HOME/build-tools" -name aapt | sort | tail -n 1)"
