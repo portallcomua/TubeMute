@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.Build
 import android.provider.Settings
 import android.text.InputType
 import android.view.KeyEvent
@@ -30,6 +31,11 @@ class MainActivity : Activity() {
         private const val DEFAULT_PAYMENT_URL = ""
         private const val PREFS = "TubeMutePrefs"
         private const val EMAIL_KEY = "user_email"
+        private val ALLOWED_WEBVIEW_HOSTS = setOf(
+            "youtube.com", "youtu.be", "googlevideo.com", "ytimg.com",
+            "youtube-nocookie.com", "accounts.google.com", "consent.youtube.com",
+            "gstatic.com", "googleusercontent.com"
+        )
     }
 
     private var webView: WebView? = null
@@ -223,7 +229,13 @@ class MainActivity : Activity() {
         settings.domStorageEnabled = true
         settings.loadsImagesAutomatically = true
         settings.mediaPlaybackRequiresUserGesture = false
-        settings.javaScriptCanOpenWindowsAutomatically = true
+        settings.javaScriptCanOpenWindowsAutomatically = false
+        settings.allowFileAccess = false
+        settings.allowContentAccess = false
+        settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            settings.safeBrowsingEnabled = true
+        }
         settings.setSupportMultipleWindows(false)
         settings.useWideViewPort = true
         settings.loadWithOverviewMode = true
@@ -243,12 +255,37 @@ class MainActivity : Activity() {
             override fun onHideCustomView() { hideCustomView() }
         }
         player.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(
+                view: WebView?,
+                request: android.webkit.WebResourceRequest?
+            ): Boolean {
+                if (request == null || !request.isForMainFrame) return false
+                return handleNavigationUrl(request.url)
+            }
+
+            @Deprecated("Deprecated in Java")
+            override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
+                return handleNavigationUrl(url?.let { Uri.parse(it) })
+            }
+
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
                 injectAdSkipper()
             }
         }
         player.loadUrl(youtubeStartUrl())
+    }
+
+    private fun handleNavigationUrl(uri: Uri?): Boolean {
+        val scheme = uri?.scheme?.lowercase(Locale.ROOT) ?: return true
+        val host = uri.host?.lowercase(Locale.ROOT) ?: return true
+        val allowed = scheme == "https" &&
+            ALLOWED_WEBVIEW_HOSTS.any { host == it || host.endsWith(".$it") }
+        if (allowed) return false
+        if (scheme == "https" || scheme == "http") {
+            try { startActivity(Intent(Intent.ACTION_VIEW, uri)) } catch (_: Exception) { }
+        }
+        return true
     }
 
     private fun immersiveSystemUiFlags(): Int = (
