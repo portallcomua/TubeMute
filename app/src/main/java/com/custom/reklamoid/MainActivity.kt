@@ -35,7 +35,7 @@ class MainActivity : Activity() {
         private const val DEVICE_UUID_KEY = "device_uuid"
         private val ALLOWED_WEBVIEW_HOSTS = setOf(
             "youtube.com", "youtu.be", "googlevideo.com", "ytimg.com",
-            "youtube-nocookie.com", "google.com", "gstatic.com", "googleusercontent.com"
+            "youtube-nocookie.com", "accounts.google.com", "consent.youtube.com"
         )
         private const val REQUEST_GOOGLE_ACCOUNT = 4102
     }
