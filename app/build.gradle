@@ -9,10 +9,10 @@ android {
 
     defaultConfig {
         applicationId "com.custom.reklamoid"
-        minSdk 19
-        targetSdk 28
-        versionCode 19
-        versionName "2.0.6"
+        minSdk 23
+        targetSdk 34
+        versionCode 20
+        versionName "2.0.7"
     }
 
     signingConfigs {
@@ -23,6 +23,7 @@ android {
             keyPassword project.findProperty("RELEASE_KEY_PASSWORD") ?: ""
             v1SigningEnabled true
             v2SigningEnabled true
+            v3SigningEnabled true
         }
     }
 
