@@ -153,8 +153,8 @@ jobs:
           "$APKSIGNER" verify --verbose --print-certs "$OLD_APK" > old-signature-report.txt 2>&1
           "$APKSIGNER" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk > new-signature-report.txt 2>&1
 
-          OLD_CERT="$(grep -E '^(Signer #1 certificate SHA-256 digest:|V2 Signer: certificate SHA-256 digest:)' | sed 's/.*digest: //' | head -n 1 old-signature-report.txt | head -n 1)"
-          NEW_CERT="$(grep -E '^(Signer #1 certificate SHA-256 digest:|V2 Signer: certificate SHA-256 digest:)' | sed 's/.*digest: //' | head -n 1 new-signature-report.txt | head -n 1)"
+          OLD_CERT="$(grep -E '^(Signer #1 certificate SHA-256 digest:|V2 Signer: certificate SHA-256 digest:)' old-signature-report.txt | sed 's/.*digest: //' | head -n 1)"
+          NEW_CERT="$(grep -E '^(Signer #1 certificate SHA-256 digest:|V2 Signer: certificate SHA-256 digest:)' new-signature-report.txt | sed 's/.*digest: //' | head -n 1)"
           test -n "$OLD_CERT" || { echo "Could not read v1.7.3 signing certificate"; cat old-signature-report.txt; exit 1; }
           test -n "$NEW_CERT" || { echo "Could not read new APK signing certificate"; cat new-signature-report.txt; exit 1; }
           echo "Installed v1.7.3 signer SHA-256: $OLD_CERT"
