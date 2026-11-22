@@ -9,22 +9,10 @@ android {
 
     defaultConfig {
         applicationId "com.custom.reklamoid"
-        minSdk 23
+        minSdk 19
         targetSdk 34
-        versionCode 20
-        versionName "2.0.7"
-    }
-
-    signingConfigs {
-        release {
-            storeFile file(project.findProperty("RELEASE_STORE_FILE") ?: "release.keystore")
-            storePassword project.findProperty("RELEASE_STORE_PASSWORD") ?: ""
-            keyAlias project.findProperty("RELEASE_KEY_ALIAS") ?: "tubemute"
-            keyPassword project.findProperty("RELEASE_KEY_PASSWORD") ?: ""
-            v1SigningEnabled true
-            v2SigningEnabled true
-            enableV3Signing = true
-        }
+        versionCode 21
+        versionName "2.0.8"
     }
 
     buildTypes {
@@ -33,7 +21,6 @@ android {
         }
 
         release {
-            signingConfig signingConfigs.release
             minifyEnabled false
             shrinkResources false
         }
