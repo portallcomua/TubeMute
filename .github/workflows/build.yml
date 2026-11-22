@@ -135,6 +135,8 @@ jobs:
 
       - name: Compare signing certificate with installed v1.7.3
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           OLD_APK="$(mktemp --suffix=.apk)"
