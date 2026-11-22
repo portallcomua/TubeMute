@@ -8,6 +8,7 @@ on:
       - fix/tubemute-verification-204
       - release/tubemute-206-adskip
       - fix/tubemute-install-hardening-207
+      - diagnostic/tubemute-208-playprotect
   workflow_dispatch:
 
 concurrency:
@@ -102,40 +103,52 @@ jobs:
           test -s app/release.keystore
           keytool -list -keystore app/release.keystore -storepass "$RELEASE_STORE_PASSWORD" -alias "$RELEASE_KEY_ALIAS"
 
-      - name: Build signed Release APK
+      - name: Build unsigned Release APK
         shell: bash
         run: |
-          gradle --no-daemon clean assembleRelease \
-            -PRELEASE_STORE_FILE=release.keystore \
-            -PRELEASE_STORE_PASSWORD="$RELEASE_STORE_PASSWORD" \
-            -PRELEASE_KEY_ALIAS="$RELEASE_KEY_ALIAS" \
-            -PRELEASE_KEY_PASSWORD="$RELEASE_KEY_PASSWORD"
+          gradle --no-daemon clean assembleRelease
+          test -s "app/build/outputs/apk/release/app-release-unsigned.apk"
 
-      - name: Verify APK package, alignment and V1, V2 plus V3 signatures
+      - name: Align, sign and verify final APK (zipalign before apksigner)
         shell: bash
         run: |
-          APK="app/build/outputs/apk/release/app-release.apk"
-          test -s "$APK"
-          AAPT="$(find "$ANDROID_HOME/build-tools" -name aapt | sort | tail -n 1)"
-          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort | tail -n 1)"
-          ZIPALIGN="$(find "$ANDROID_HOME/build-tools" -name zipalign | sort | tail -n 1)"
-          test -x "$AAPT"
-          test -x "$APKSIGNER"
-          test -x "$ZIPALIGN"
-
-          "$ZIPALIGN" -c -v 4 "$APK"
-          "$APKSIGNER" verify --verbose --print-certs "$APK" 2>&1 | tee apk-signature-report.txt
+          set -euo pipefail
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          AAPT="$BUILD_TOOLS/aapt"
+          APKSIGNER="$BUILD_TOOLS/apksigner"
+          ZIPALIGN="$BUILD_TOOLS/zipalign"
+          UNSIGNED_APK="app/build/outputs/apk/release/app-release-unsigned.apk"
+          ALIGNED_APK="app/build/outputs/apk/release/app-release-aligned.apk"
+          FINAL_APK="app/build/outputs/apk/release/TubeMute-2.0.8.apk"
+          SIGNED_TMP="app/build/outputs/apk/release/TubeMute-2.0.8-signed.apk"
+          test -x "$AAPT" && test -x "$APKSIGNER" && test -x "$ZIPALIGN"
+          test -s "$UNSIGNED_APK"
+          # Align the unsigned APK first; sign only the aligned result.
+          "$ZIPALIGN" -p -f 4 "$UNSIGNED_APK" "$ALIGNED_APK"
+          "$ZIPALIGN" -c -v 4 "$ALIGNED_APK"
+          "$APKSIGNER" sign \
+            --ks app/release.keystore \
+            --ks-key-alias "$RELEASE_KEY_ALIAS" \
+            --ks-pass env:RELEASE_STORE_PASSWORD \
+            --key-pass env:RELEASE_KEY_PASSWORD \
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            --v3-signing-enabled false \
+            --out "$SIGNED_TMP" "$ALIGNED_APK"
+          mv "$SIGNED_TMP" "$FINAL_APK"
+          # Do not rewrite FINAL_APK after signing. Only verify and hash it.
+          "$APKSIGNER" verify --verbose --print-certs "$FINAL_APK" 2>&1 | tee apk-signature-report.txt
           grep -Fq "Verified using v1 scheme (JAR signing): true" apk-signature-report.txt
           grep -Fq "Verified using v2 scheme (APK Signature Scheme v2): true" apk-signature-report.txt
-          grep -Fq "Verified using v3 scheme (APK Signature Scheme v3): true" apk-signature-report.txt
-
-          "$AAPT" dump badging "$APK" > apk-info.txt
-          grep -q "package: name='com.custom.reklamoid' versionCode='20' versionName='2.0.7'" apk-info.txt
-          grep -q "sdkVersion:'23'" apk-info.txt
+          "$ZIPALIGN" -c -v 4 "$FINAL_APK"
+          "$AAPT" dump badging "$FINAL_APK" > apk-info.txt
+          grep -q "package: name='com.custom.reklamoid' versionCode='21' versionName='2.0.8'" apk-info.txt
+          grep -q "sdkVersion:'19'" apk-info.txt
           grep -q "targetSdkVersion:'34'" apk-info.txt
           grep -q "launchable-activity" apk-info.txt
+          sha256sum "$FINAL_APK" | tee final-apk.sha256
           cat apk-info.txt
-          ls -lh "$APK"
+          ls -lh "$FINAL_APK"
 
       - name: Compare signing certificate with installed v1.7.3
         shell: bash
@@ -155,11 +168,11 @@ jobs:
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort | tail -n 1)"
           AAPT="$(find "$ANDROID_HOME/build-tools" -name aapt | sort | tail -n 1)"
           "$APKSIGNER" verify --verbose --print-certs "$OLD_APK" > old-signature-report.txt 2>&1
-          "$APKSIGNER" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk > new-signature-report.txt 2>&1
+          "$APKSIGNER" verify --verbose --print-certs app/build/outputs/apk/release/TubeMute-2.0.8.apk > new-signature-report.txt 2>&1
 
           echo "=== Installed v1.7.3 signature report ==="
           cat old-signature-report.txt
-          echo "=== Candidate 2.0.7 signature report ==="
+          echo "=== Candidate 2.0.8 signature report ==="
           cat new-signature-report.txt
           OLD_CERT="$(awk 'tolower($0) ~ /certificate sha-256 digest:/ {print tolower($NF); exit}' old-signature-report.txt)"
           NEW_CERT="$(awk 'tolower($0) ~ /certificate sha-256 digest:/ {print tolower($NF); exit}' new-signature-report.txt)"
@@ -179,9 +192,9 @@ jobs:
         shell: bash
         run: |
           mkdir -p TubeMute-USB
-          cp app/build/outputs/apk/release/app-release.apk TubeMute-USB/TubeMute.apk
+          cp app/build/outputs/apk/release/TubeMute-2.0.8.apk TubeMute-USB/TubeMute.apk
           cat > TubeMute-USB/ПРОЧИТАЙТЕ-ПЕРЕД-УСТАНОВКОЮ.txt <<'EOF'
-          TUBEMUTE 2.0.7 — ANDROID TV / GOOGLE TV / ANDROID
+          TUBEMUTE 2.0.8 — ANDROID TV / GOOGLE TV / ANDROID
 
           1. Copy TubeMute.apk to the root of a USB drive.
           2. Connect the USB drive to the TV or phone.
@@ -192,19 +205,19 @@ jobs:
           NOTES:
           - Keep the previous TubeMute installation in place when updating.
           - The update must be signed with the same permanent TubeMute signing key.
-          - Android 6.0 (API 23) or newer is required.
+          - Android 4.4 (API 19) or newer is required.
           - A compatible Android System WebView and internet connection are required.
           - Samsung Tizen and LG webOS do not install Android APK files.
           EOF
           (cd TubeMute-USB && sha256sum TubeMute.apk > SHA256SUMS.txt)
           zip -j TubeMute-USB-Installer.zip TubeMute-USB/TubeMute.apk TubeMute-USB/ПРОЧИТАЙТЕ-ПЕРЕД-УСТАНОВКОЮ.txt TubeMute-USB/SHA256SUMS.txt
-          cp app/build/outputs/apk/release/app-release.apk TubeMute.apk
+          cp app/build/outputs/apk/release/TubeMute-2.0.8.apk TubeMute.apk
           sha256sum TubeMute.apk > TubeMute.apk.sha256
 
       - name: Upload standalone signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: TubeMute-2.0.7-APK
+          name: TubeMute-2.0.8-APK
           path: |
             TubeMute.apk
             TubeMute.apk.sha256
@@ -214,7 +227,7 @@ jobs:
       - name: Upload USB installer ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: TubeMute-2.0.7-USB
+          name: TubeMute-2.0.8-USB
           path: TubeMute-USB-Installer.zip
           if-no-files-found: error
           retention-days: 90
@@ -223,8 +236,8 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v2.0.7
-          name: TubeMute 2.0.7 — Android TV and Android
+          tag_name: v2.0.8
+          name: TubeMute 2.0.8 — Android TV and Android
           target_commitish: ${{ github.sha }}
           generate_release_notes: true
           make_latest: true
