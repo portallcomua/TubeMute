@@ -9,7 +9,6 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.os.Build
-import android.provider.Settings
 import android.text.InputType
 import android.view.KeyEvent
 import android.view.View
@@ -24,6 +23,7 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Locale
+import java.util.UUID
 import kotlin.concurrent.thread
 
 class MainActivity : Activity() {
@@ -32,6 +32,11 @@ class MainActivity : Activity() {
         private const val DEFAULT_PAYMENT_URL = ""
         private const val PREFS = "TubeMutePrefs"
         private const val EMAIL_KEY = "user_email"
+        private const val DEVICE_UUID_KEY = "device_uuid"
+        private val ALLOWED_WEBVIEW_HOSTS = setOf(
+            "youtube.com", "youtu.be", "googlevideo.com", "ytimg.com",
+            "youtube-nocookie.com", "google.com", "gstatic.com", "googleusercontent.com"
+        )
         private const val REQUEST_GOOGLE_ACCOUNT = 4102
     }
 
@@ -45,8 +50,14 @@ class MainActivity : Activity() {
     @Volatile private var requestInProgress = false
 
     private val deviceId: String
-        get() = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)
-            ?: "unknown-android-device"
+        get() {
+            val prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val saved = prefs.getString(DEVICE_UUID_KEY, null)
+            if (!saved.isNullOrBlank() && saved.length >= 8) return saved
+            val created = "tm-${UUID.randomUUID()}"
+            prefs.edit().putString(DEVICE_UUID_KEY, created).apply()
+            return created
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -323,9 +334,13 @@ class MainActivity : Activity() {
             override fun onHideCustomView() { hideCustomView() }
         }
         player.webViewClient = object : WebViewClient() {
-            override fun onPageFinished(view: WebView?, url: String?) {
-                super.onPageFinished(view, url)
-                injectAdSkipper()
+            override fun shouldOverrideUrlLoading(view: WebView?, request: android.webkit.WebResourceRequest?): Boolean {
+                return handleNavigationUrl(request?.url)
+            }
+
+            @Deprecated("Deprecated in Java")
+            override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
+                return handleNavigationUrl(url?.let { Uri.parse(it) })
             }
         }
         player.loadUrl(youtubeStartUrl())
@@ -349,29 +364,15 @@ class MainActivity : Activity() {
         webView?.requestFocus()
     }
 
-    private fun injectAdSkipper() {
-        val player = webView ?: return
-        val script = """
-            (function() {
-                if (window.tubeMuteAdSkipper) return;
-                window.tubeMuteAdSkipper = true;
-                setInterval(function() {
-                    try {
-                        var buttons = document.querySelectorAll('.ytp-ad-skip-button,.ytp-ad-skip-button-modern,.ytp-skip-ad-button');
-                        buttons.forEach(function(button) {
-                            if (button && button.offsetParent !== null) button.click();
-                        });
-                        var ad = document.querySelector('.ad-showing, .ad-interrupting');
-                        var video = document.querySelector('video');
-                        if (ad && video) {
-                            var duration = video.duration;
-                            if (isFinite(duration) && duration > 0) video.currentTime = duration;
-                        }
-                    } catch (e) {}
-                }, 500);
-            })();
-        """.trimIndent()
-        player.evaluateJavascript(script, null)
+    private fun handleNavigationUrl(uri: Uri?): Boolean {
+        val scheme = uri?.scheme?.lowercase(Locale.ROOT) ?: return true
+        val host = uri.host?.lowercase(Locale.ROOT) ?: return true
+        val allowed = scheme == "https" && ALLOWED_WEBVIEW_HOSTS.any { host == it || host.endsWith("." + it) }
+        if (allowed) return false
+        if (scheme == "https" || scheme == "http") {
+            try { startActivity(Intent(Intent.ACTION_VIEW, uri)) } catch (_: Exception) { }
+        }
+        return true
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
