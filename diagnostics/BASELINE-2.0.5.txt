@@ -1,0 +1,6 @@
+TubeMute 2.0.5 baseline diagnostic.
+
+Source is exactly tag v1.7.3, including its original MainActivity, manifest, resources and dependencies.
+Only app version metadata changes: versionCode 18, versionName 2.0.5.
+Application ID and release signing configuration remain unchanged.
+This candidate is for controlled installation verification only; it does not add the Google account picker or later UI changes.
