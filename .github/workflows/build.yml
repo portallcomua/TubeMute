@@ -159,7 +159,8 @@ jobs:
           "$AAPT" dump badging "$OLD_APK" > old-apk-info.txt
           grep -q "package: name='com.custom.reklamoid' versionCode='11' versionName='1.7.3'" old-apk-info.txt
           echo "PASS: package identity and signing certificate match v1.7.3."
-\n      - name: Prepare USB installer
+
+      - name: Prepare USB installer
         shell: bash
         run: |
           mkdir -p TubeMute-USB
