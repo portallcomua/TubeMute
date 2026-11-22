@@ -11,8 +11,8 @@ android {
         applicationId "com.custom.reklamoid"
         minSdk 19
         targetSdk 28
-        versionCode 11
-        versionName "1.7.3"
+        versionCode 18
+        versionName "2.0.5"
     }
 
     signingConfigs {
