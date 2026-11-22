@@ -126,20 +126,46 @@ jobs:
           grep -Fq "Verified using v2 scheme (APK Signature Scheme v2): true" apk-signature-report.txt
 
           "$AAPT" dump badging "$APK" > apk-info.txt
-          grep -q "package: name='com.custom.reklamoid' versionCode='15' versionName='2.0.2'" apk-info.txt
+          grep -q "package: name='com.custom.reklamoid' versionCode='16' versionName='2.0.3'" apk-info.txt
           grep -q "sdkVersion:'19'" apk-info.txt
           grep -q "targetSdkVersion:'34'" apk-info.txt
           grep -q "launchable-activity" apk-info.txt
           cat apk-info.txt
           ls -lh "$APK"
 
-      - name: Prepare USB installer
+      - name: Compare signing certificate with installed v1.7.3
+        shell: bash
+        run: |
+          set -euo pipefail
+          OLD_APK="$(mktemp --suffix=.apk)"
+          trap 'rm -f "$OLD_APK" old-signature-report.txt new-signature-report.txt old-apk-info.txt' EXIT
+          curl --fail --location --silent --show-error \
+            "https://github.com/portallcomua/TubeMute/releases/download/v1.7.3/TubeMute.apk" \
+            --output "$OLD_APK"
+
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort | tail -n 1)"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -name aapt | sort | tail -n 1)"
+          "$APKSIGNER" verify --verbose --print-certs "$OLD_APK" > old-signature-report.txt 2>&1
+          "$APKSIGNER" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk > new-signature-report.txt 2>&1
+
+          OLD_CERT="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' old-signature-report.txt | head -n 1)"
+          NEW_CERT="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' new-signature-report.txt | head -n 1)"
+          test -n "$OLD_CERT" || { echo "Could not read v1.7.3 signing certificate"; cat old-signature-report.txt; exit 1; }
+          test -n "$NEW_CERT" || { echo "Could not read new APK signing certificate"; cat new-signature-report.txt; exit 1; }
+          echo "Installed v1.7.3 signer SHA-256: $OLD_CERT"
+          echo "New APK signer SHA-256:         $NEW_CERT"
+          test "$OLD_CERT" = "$NEW_CERT" || { echo "ERROR: signing certificates differ; update would not preserve the installed app."; exit 1; }
+
+          "$AAPT" dump badging "$OLD_APK" > old-apk-info.txt
+          grep -q "package: name='com.custom.reklamoid' versionCode='11' versionName='1.7.3'" old-apk-info.txt
+          echo "PASS: package identity and signing certificate match v1.7.3."
+\n      - name: Prepare USB installer
         shell: bash
         run: |
           mkdir -p TubeMute-USB
           cp app/build/outputs/apk/release/app-release.apk TubeMute-USB/TubeMute.apk
           cat > TubeMute-USB/ПРОЧИТАЙТЕ-ПЕРЕД-УСТАНОВКОЮ.txt <<'EOF'
-          TUBEMUTE 2.0.2 — ANDROID TV / GOOGLE TV / ANDROID
+          TUBEMUTE 2.0.3 — ANDROID TV / GOOGLE TV / ANDROID
 
           1. Copy TubeMute.apk to the root of a USB drive.
           2. Connect the USB drive to the TV or phone.
@@ -162,7 +188,7 @@ jobs:
       - name: Upload standalone signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: TubeMute-2.0.2-APK
+          name: TubeMute-2.0.3-APK
           path: |
             TubeMute.apk
             TubeMute.apk.sha256
@@ -172,7 +198,7 @@ jobs:
       - name: Upload USB installer ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: TubeMute-2.0.2-USB
+          name: TubeMute-2.0.3-USB
           path: TubeMute-USB-Installer.zip
           if-no-files-found: error
           retention-days: 90
@@ -181,8 +207,8 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v2.0.2
-          name: TubeMute 2.0.2 — Android TV and Android
+          tag_name: v2.0.3
+          name: TubeMute 2.0.3 — Android TV and Android
           target_commitish: ${{ github.sha }}
           generate_release_notes: true
           make_latest: true
