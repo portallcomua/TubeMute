@@ -34,7 +34,7 @@ jobs:
           php-version: '8.2'
 
       - name: Validate TubeMute WordPress plugin syntax
-        run: php -l server/tubemute-access-api.php
+        run: php -l tubemute-access-api.php
 
       - name: Require permanent signing key
         shell: bash
@@ -63,8 +63,8 @@ jobs:
           from pathlib import Path
 
           checks = {
-              Path("app/src/main/res/drawable/ic_launcher.png"): (192, 192),
-              Path("app/src/main/res/drawable/tv_banner.png"): (320, 180),
+              Path("src/main/res/drawable/ic_launcher.png"): (192, 192),
+              Path("src/main/res/drawable/tv_banner.png"): (320, 180),
           }
           signature = b"\x89PNG\r\n\x1a\n"
           for path, expected in checks.items():
@@ -76,7 +76,7 @@ jobs:
                   raise SystemExit(f"Wrong PNG dimensions for {path}: {actual}, expected {expected}")
               print(f"VALID PNG: {path} {actual[0]}x{actual[1]} ({len(data)} bytes)")
 
-          manifest = Path("app/src/main/AndroidManifest.xml").read_text(encoding="utf-8")
+          manifest = Path("src/main/AndroidManifest.xml").read_text(encoding="utf-8")
           required = (
               'android:icon="@drawable/ic_launcher"',
               'android:banner="@drawable/tv_banner"',
@@ -94,15 +94,15 @@ jobs:
       - name: Restore permanent signing key
         shell: bash
         run: |
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > app/release.keystore
-          test -s app/release.keystore
-          keytool -list -keystore app/release.keystore -storepass "$RELEASE_STORE_PASSWORD" -alias "$RELEASE_KEY_ALIAS"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > release.keystore
+          test -s release.keystore
+          keytool -list -keystore release.keystore -storepass "$RELEASE_STORE_PASSWORD" -alias "$RELEASE_KEY_ALIAS"
 
       - name: Build unsigned Release APK
         shell: bash
         run: |
           gradle --no-daemon clean assembleRelease
-          test -s "app/build/outputs/apk/release/app-release-unsigned.apk"
+          find build/outputs/apk/release -maxdepth 1 -type f -name '*-unsigned.apk' -print -quit | grep -q .
 
       - name: Align, sign and verify final APK (zipalign before apksigner)
         shell: bash
@@ -112,17 +112,17 @@ jobs:
           AAPT="$BUILD_TOOLS/aapt"
           APKSIGNER="$BUILD_TOOLS/apksigner"
           ZIPALIGN="$BUILD_TOOLS/zipalign"
-          UNSIGNED_APK="app/build/outputs/apk/release/app-release-unsigned.apk"
-          ALIGNED_APK="app/build/outputs/apk/release/app-release-aligned.apk"
-          FINAL_APK="app/build/outputs/apk/release/TubeMute-2.0.9.apk"
-          SIGNED_TMP="app/build/outputs/apk/release/TubeMute-2.0.9-signed.apk"
+          UNSIGNED_APK="$(find build/outputs/apk/release -maxdepth 1 -type f -name '*-unsigned.apk' -print -quit)"
+          ALIGNED_APK="build/outputs/apk/release/app-release-aligned.apk"
+          FINAL_APK="build/outputs/apk/release/TubeMute-2.0.9.apk"
+          SIGNED_TMP="build/outputs/apk/release/TubeMute-2.0.9-signed.apk"
           test -x "$AAPT" && test -x "$APKSIGNER" && test -x "$ZIPALIGN"
           test -s "$UNSIGNED_APK"
           # Align the unsigned APK first; sign only the aligned result.
           "$ZIPALIGN" -p -f 4 "$UNSIGNED_APK" "$ALIGNED_APK"
           "$ZIPALIGN" -c -v 4 "$ALIGNED_APK"
           "$APKSIGNER" sign \
-            --ks app/release.keystore \
+            --ks release.keystore \
             --ks-key-alias "$RELEASE_KEY_ALIAS" \
             --ks-pass env:RELEASE_STORE_PASSWORD \
             --key-pass env:RELEASE_KEY_PASSWORD \
@@ -163,7 +163,7 @@ jobs:
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort | tail -n 1)"
           AAPT="$(find "$ANDROID_HOME/build-tools" -name aapt | sort | tail -n 1)"
           "$APKSIGNER" verify --verbose --print-certs "$OLD_APK" > old-signature-report.txt 2>&1
-          "$APKSIGNER" verify --verbose --print-certs app/build/outputs/apk/release/TubeMute-2.0.9.apk > new-signature-report.txt 2>&1
+          "$APKSIGNER" verify --verbose --print-certs build/outputs/apk/release/TubeMute-2.0.9.apk > new-signature-report.txt 2>&1
 
           echo "=== Installed v1.7.3 signature report ==="
           cat old-signature-report.txt
@@ -187,7 +187,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p TubeMute-USB
-          cp app/build/outputs/apk/release/TubeMute-2.0.9.apk TubeMute-USB/TubeMute.apk
+          cp build/outputs/apk/release/TubeMute-2.0.9.apk TubeMute-USB/TubeMute.apk
           cat > TubeMute-USB/ПРОЧИТАЙТЕ-ПЕРЕД-УСТАНОВКОЮ.txt <<'EOF'
           TUBEMUTE 2.0.9 — ANDROID TV / GOOGLE TV / ANDROID
 
@@ -206,7 +206,7 @@ jobs:
           EOF
           (cd TubeMute-USB && sha256sum TubeMute.apk > SHA256SUMS.txt)
           zip -j TubeMute-USB-Installer.zip TubeMute-USB/TubeMute.apk TubeMute-USB/ПРОЧИТАЙТЕ-ПЕРЕД-УСТАНОВКОЮ.txt TubeMute-USB/SHA256SUMS.txt
-          cp app/build/outputs/apk/release/TubeMute-2.0.9.apk TubeMute.apk
+          cp build/outputs/apk/release/TubeMute-2.0.9.apk TubeMute.apk
           sha256sum TubeMute.apk > TubeMute.apk.sha256
 
       - name: Upload standalone signed APK
