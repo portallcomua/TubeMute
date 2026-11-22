@@ -1,4 +1,11 @@
-# TubeMute 2.0.2
+# TubeMute 2.0.4 — verification candidate
+
+## 2.0.4 candidate changes
+
+- Keeps the Google account chooser and manual email fallback.
+- Restores target SDK 28, matching the known-installable 1.7.3 baseline, to isolate the target SDK change during Play Protect troubleshooting.
+- Restores explicit Android manifest hardening: backup disabled and cleartext traffic disabled.
+- Keeps application ID, permanent signing key, server access, trial and PRO logic unchanged.
 
 ## 2.0.2 candidate changes
 
@@ -7,7 +14,7 @@
 - The confirmed email is stored locally and reused for server-side trial, PRO and payment checks.
 - The account picker does not sign the user into YouTube and does not add broad account/contact permissions.
 - Application ID and permanent release signing configuration are retained for in-place upgrades.
-- Target SDK updated to API 34 while retaining minimum API 19.
+- Target SDK 34 was tested in 2.0.2/2.0.3 and is reverted to API 28 in this diagnostic candidate.
 
 # TubeMute 2.0.0
 
@@ -44,9 +51,9 @@ UA Pay Box remains the payment processor and continues receiving Freemius webhoo
 ## Android compatibility
 
 - Application ID: `com.custom.reklamoid` (preserved for updates).
-- Version: 2.0.0 / versionCode 13.
+- Diagnostic candidate: 2.0.4 / versionCode 17.
 - Minimum Android API: 19 (Android 4.4).
-- Target SDK: 28.
+- Target SDK: 28 (restored to the 1.7.3 baseline for controlled verification testing).
 - Android TV / Google TV / Android smartphones. Samsung Tizen and LG webOS are not Android and cannot install APK files.
 
 ## Build and signing
