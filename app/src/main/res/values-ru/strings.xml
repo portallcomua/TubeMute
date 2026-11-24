@@ -38,7 +38,16 @@
     <string name="update_check_failed">Не удалось проверить обновления.</string>
     <string name="update_available_title">Доступно обновление</string>
     <string name="update_available_message">Доступна новая версия %1$s на GitHub (установлена: %2$s).</string>
-    <string name="btn_download_update">Скачать обновление</string>
+    <string name="btn_download_update">Обновить сейчас</string>
     <string name="btn_later">Позже</string>
     <string name="update_open_error">Не удалось открыть ссылку обновления.</string>
+    <string name="welcome_message">Выберите аккаунт Google на устройстве или продолжайте без входа.</string>
+    <string name="btn_continue_without_account">Продолжить без входа</string>
+    <string name="guest_account_label">Устройство (без входа)</string>
+    <string name="downloading_update">Загрузка обновления...</string>
+    <string name="downloading_update_progress">Загрузка обновления v%1$s: %2$d%%</string>
+    <string name="update_download_failed">Не удалось загрузить обновление: %1$s</string>
+    <string name="install_permission_title">Разрешите установку обновлений</string>
+    <string name="install_permission_message">Один раз включите разрешение для TubeMute в настройках и вернитесь назад — установка продолжится автоматически.</string>
+    <string name="btn_open_settings">Открыть настройки</string>
 </resources>

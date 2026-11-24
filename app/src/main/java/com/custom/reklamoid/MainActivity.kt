@@ -11,6 +11,7 @@ import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.text.InputType
 import android.view.Gravity
 import android.view.KeyEvent
@@ -26,6 +27,8 @@ import android.widget.FrameLayout
 import android.widget.TextView
 import android.widget.Toast
 import org.json.JSONObject
+import java.io.File
+import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Locale
@@ -42,6 +45,8 @@ class MainActivity : Activity() {
         private const val EMAIL_KEY = "user_email"
         private const val DEVICE_UUID_KEY = "device_uuid"
         private const val REQ_CHOOSE_ACCOUNT = 1001
+        private const val REQ_INSTALL_PERMISSION = 1002
+        private const val GUEST_DOMAIN = "@device.tubemute.app"
 
         private val ALLOWED_WEBVIEW_HOSTS = setOf(
             "youtube.com",
@@ -62,9 +67,13 @@ class MainActivity : Activity() {
     private var customViewCallback: WebChromeClient.CustomViewCallback? = null
     private var previousSystemUiVisibility = 0
     private var updateCheckedThisSession = false
+    private var pendingInstallApkPath: String? = null
+    private var pendingFallbackUrl = ""
+    private var progressDialog: AlertDialog? = null
 
     @Volatile private var requestInProgress = false
     @Volatile private var updateCheckInProgress = false
+    @Volatile private var updateDownloadCancelled = false
 
     private val deviceId: String
         get() {
@@ -81,9 +90,9 @@ class MainActivity : Activity() {
     private val appVersionName: String
         get() = try {
             @Suppress("DEPRECATION")
-            packageManager.getPackageInfo(packageName, 0).versionName ?: "2.1.0"
+            packageManager.getPackageInfo(packageName, 0).versionName ?: "2.1.2"
         } catch (_: Exception) {
-            "2.1.0"
+            "2.1.2"
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -91,14 +100,65 @@ class MainActivity : Activity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         currentEmail = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getString(EMAIL_KEY, "") ?: ""
-        if (currentEmail.isBlank()) {
-            launchAccountPicker()
-        } else {
+        if (currentEmail.isNotBlank()) {
             checkAccess()
+            return
+        }
+        val detected = findVisibleGoogleEmail()
+        if (detected.isNotBlank()) {
+            saveEmailAndCheck(detected)
+        } else {
+            showWelcomeAccountChoice()
         }
     }
 
+    private fun findVisibleGoogleEmail(): String {
+        return try {
+            AccountManager.get(this).getAccountsByType("com.google")
+                .firstOrNull { isValidEmail(it.name.trim()) }
+                ?.name?.trim()?.lowercase(Locale.ROOT).orEmpty()
+        } catch (_: Exception) {
+            ""
+        }
+    }
+
+    private fun activateGuestDeviceAccount() {
+        val raw = deviceId.lowercase(Locale.ROOT).replace(Regex("[^a-z0-9]"), "")
+        val suffix = raw.take(12).ifBlank { "device" }
+        saveEmailAndCheck("tv-$suffix$GUEST_DOMAIN")
+    }
+
+    private fun displayEmail(): String {
+        return if (currentEmail.endsWith(GUEST_DOMAIN)) {
+            getString(R.string.guest_account_label)
+        } else {
+            currentEmail.ifBlank { "-" }
+        }
+    }
+
+    private fun showWelcomeAccountChoice() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.app_name)
+            .setMessage(R.string.welcome_message)
+            .setCancelable(false)
+            .setPositiveButton(R.string.btn_continue_without_account) { _, _ ->
+                activateGuestDeviceAccount()
+            }
+            .setNeutralButton(R.string.btn_device_account) { _, _ ->
+                launchAccountPicker()
+            }
+            .setNegativeButton(R.string.settings_enter_email) { _, _ ->
+                showRegistrationDialog()
+            }
+            .show()
+    }
+
     private fun launchAccountPicker() {
+        val visible = findVisibleGoogleEmail()
+        if (visible.isNotBlank() && currentEmail.isBlank()) {
+            saveEmailAndCheck(visible)
+            return
+        }
         try {
             val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 AccountManager.newChooseAccountIntent(
@@ -126,7 +186,11 @@ class MainActivity : Activity() {
             @Suppress("DEPRECATION")
             startActivityForResult(intent, REQ_CHOOSE_ACCOUNT)
         } catch (_: Exception) {
-            showRegistrationDialog()
+            if (currentEmail.isBlank()) {
+                activateGuestDeviceAccount()
+            } else {
+                showRegistrationDialog()
+            }
         }
     }
 
@@ -144,8 +208,18 @@ class MainActivity : Activity() {
             }
             if (isValidEmail(pickedEmail)) {
                 saveEmailAndCheck(pickedEmail)
-            } else {
-                showRegistrationDialog()
+            } else if (currentEmail.isBlank()) {
+                showWelcomeAccountChoice()
+            }
+        } else if (requestCode == REQ_INSTALL_PERMISSION) {
+            val apkPath = pendingInstallApkPath
+            val fallback = pendingFallbackUrl
+            pendingInstallApkPath = null
+            if (!apkPath.isNullOrBlank()) {
+                val file = File(apkPath)
+                if (file.isFile) {
+                    launchSystemInstaller(file, fallback)
+                }
             }
         }
     }
@@ -165,7 +239,9 @@ class MainActivity : Activity() {
     private fun showRegistrationDialog() {
         val input = EditText(this).apply {
             hint = getString(R.string.reg_hint)
-            if (currentEmail.isNotBlank()) setText(currentEmail)
+            if (currentEmail.isNotBlank() && !currentEmail.endsWith(GUEST_DOMAIN)) {
+                setText(currentEmail)
+            }
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
             setSingleLine(true)
             isFocusable = true
@@ -186,8 +262,10 @@ class MainActivity : Activity() {
                 }
             }
             .setNeutralButton(R.string.btn_device_account) { _, _ -> launchAccountPicker() }
-            .setNegativeButton(R.string.btn_exit) { _, _ ->
-                if (webView == null) finish()
+            .setNegativeButton(R.string.btn_continue_without_account) { _, _ ->
+                if (currentEmail.isBlank()) {
+                    activateGuestDeviceAccount()
+                }
             }
             .show()
     }
@@ -324,7 +402,7 @@ class MainActivity : Activity() {
                     runOnUiThread {
                         updateCheckInProgress = false
                         if (hasUpdate) {
-                            showUpdateAvailableDialog(remoteVersion, targetUrl)
+                            showUpdateAvailableDialog(remoteVersion, apkUrl, releaseUrl)
                         } else if (manual) {
                             Toast.makeText(
                                 this,
@@ -359,19 +437,218 @@ class MainActivity : Activity() {
         return 0
     }
 
-    private fun showUpdateAvailableDialog(remoteVersion: String, downloadUrl: String) {
+    private fun showUpdateAvailableDialog(
+        remoteVersion: String,
+        apkUrl: String,
+        releaseUrl: String
+    ) {
+        val fallbackUrl = releaseUrl.ifBlank { apkUrl }
         AlertDialog.Builder(this)
             .setTitle(R.string.update_available_title)
             .setMessage(getString(R.string.update_available_message, remoteVersion, appVersionName))
             .setPositiveButton(R.string.btn_download_update) { _, _ ->
-                try {
-                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(downloadUrl)))
-                } catch (_: Exception) {
-                    Toast.makeText(this, R.string.update_open_error, Toast.LENGTH_LONG).show()
+                if (apkUrl.isNotBlank()) {
+                    downloadAndInstallUpdate(apkUrl, remoteVersion, fallbackUrl)
+                } else {
+                    openUrlInBrowser(fallbackUrl)
                 }
             }
             .setNegativeButton(R.string.btn_later, null)
             .show()
+    }
+
+    private fun openUrlInBrowser(url: String) {
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        } catch (_: Exception) {
+            Toast.makeText(this, R.string.update_open_error, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun downloadAndInstallUpdate(
+        apkUrl: String,
+        remoteVersion: String,
+        fallbackUrl: String
+    ) {
+        updateDownloadCancelled = false
+        progressDialog?.dismiss()
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(R.string.update_available_title)
+            .setMessage(R.string.downloading_update)
+            .setCancelable(false)
+            .setNegativeButton(R.string.btn_later) { _, _ ->
+                updateDownloadCancelled = true
+            }
+            .show()
+        progressDialog = dialog
+
+        thread {
+            var currentUrl = apkUrl
+            try {
+                val baseDir = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    cacheDir
+                } else {
+                    externalCacheDir ?: cacheDir
+                }
+                val updatesDir = File(baseDir, "updates").apply { mkdirs() }
+                updatesDir.listFiles()?.forEach { old ->
+                    if (old.name.endsWith(".apk")) old.delete()
+                }
+                val safeVer = remoteVersion.replace(Regex("[^A-Za-z0-9._-]"), "_")
+                val targetFile = File(updatesDir, "TubeMute-$safeVer.apk")
+
+                var conn: HttpURLConnection? = null
+                for (hop in 0 until 6) {
+                    val nextConn = (URL(currentUrl).openConnection() as HttpURLConnection).apply {
+                        instanceFollowRedirects = false
+                        connectTimeout = 15000
+                        readTimeout = 30000
+                        setRequestProperty("User-Agent", "TubeMute-Android/$appVersionName")
+                        setRequestProperty("Accept", "application/octet-stream")
+                    }
+                    val code = nextConn.responseCode
+                    if (code in listOf(301, 302, 303, 307, 308)) {
+                        val location = nextConn.getHeaderField("Location").orEmpty()
+                        nextConn.disconnect()
+                        if (location.isBlank()) throw Exception("Redirect missing Location")
+                        currentUrl = URL(URL(currentUrl), location).toString()
+                    } else {
+                        conn = nextConn
+                        break
+                    }
+                }
+                val activeConn = conn ?: throw Exception("Too many redirects")
+                try {
+                    val code = activeConn.responseCode
+                    if (code !in 200..299) {
+                        throw Exception("HTTP $code")
+                    }
+                    val total = activeConn.contentLengthLong
+                    var downloaded = 0L
+                    var lastPercent = -1
+                    val buffer = ByteArray(16384)
+                    activeConn.inputStream.use { input ->
+                        FileOutputStream(targetFile).use { output ->
+                            while (true) {
+                                if (updateDownloadCancelled) {
+                                    throw Exception("Cancelled")
+                                }
+                                val read = input.read(buffer)
+                                if (read <= 0) break
+                                output.write(buffer, 0, read)
+                                downloaded += read
+                                if (total > 0) {
+                                    val pct = ((downloaded * 100) / total).toInt().coerceIn(0, 100)
+                                    if (pct != lastPercent) {
+                                        lastPercent = pct
+                                        runOnUiThread {
+                                            progressDialog?.setMessage(
+                                                getString(
+                                                    R.string.downloading_update_progress,
+                                                    remoteVersion,
+                                                    pct
+                                                )
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (targetFile.length() < 100_000L) {
+                        targetFile.delete()
+                        throw Exception("Invalid APK file")
+                    }
+                } finally {
+                    activeConn.disconnect()
+                }
+
+                runOnUiThread {
+                    progressDialog?.dismiss()
+                    progressDialog = null
+                    if (!updateDownloadCancelled) {
+                        installDownloadedApk(targetFile, fallbackUrl)
+                    }
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    progressDialog?.dismiss()
+                    progressDialog = null
+                    if (!updateDownloadCancelled) {
+                        Toast.makeText(
+                            this,
+                            getString(R.string.update_download_failed, e.message ?: ""),
+                            Toast.LENGTH_LONG
+                        ).show()
+                        if (fallbackUrl.isNotBlank()) {
+                            openUrlInBrowser(fallbackUrl)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun installDownloadedApk(file: File, fallbackUrl: String) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
+            pendingInstallApkPath = file.absolutePath
+            pendingFallbackUrl = fallbackUrl
+            AlertDialog.Builder(this)
+                .setTitle(R.string.install_permission_title)
+                .setMessage(R.string.install_permission_message)
+                .setPositiveButton(R.string.btn_open_settings) { _, _ ->
+                    try {
+                        val settingsIntent = Intent(
+                            Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                            Uri.parse("package:$packageName")
+                        )
+                        @Suppress("DEPRECATION")
+                        startActivityForResult(settingsIntent, REQ_INSTALL_PERMISSION)
+                    } catch (_: Exception) {
+                        pendingInstallApkPath = null
+                        launchSystemInstaller(file, fallbackUrl)
+                    }
+                }
+                .setNegativeButton(R.string.btn_later) { _, _ ->
+                    pendingInstallApkPath = null
+                }
+                .show()
+            return
+        }
+        launchSystemInstaller(file, fallbackUrl)
+    }
+
+    private fun launchSystemInstaller(file: File, fallbackUrl: String) {
+        val apkUri: Uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            Uri.parse("content://$packageName.updateprovider/updates/${file.name}")
+        } else {
+            file.setReadable(true, false)
+            Uri.fromFile(file)
+        }
+        val viewIntent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(apkUri, "application/vnd.android.package-archive")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        try {
+            startActivity(viewIntent)
+            return
+        } catch (_: Exception) {
+        }
+        @Suppress("DEPRECATION")
+        val installIntent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
+            data = apkUri
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
+        }
+        try {
+            startActivity(installIntent)
+        } catch (_: Exception) {
+            if (fallbackUrl.isNotBlank()) {
+                openUrlInBrowser(fallbackUrl)
+            } else {
+                Toast.makeText(this, R.string.update_open_error, Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     private fun showSettingsDialog() {
@@ -385,7 +662,7 @@ class MainActivity : Activity() {
         val info = getString(
             R.string.settings_summary,
             appVersionName,
-            currentEmail.ifBlank { "-" },
+            displayEmail(),
             currentAccessSummary.ifBlank { "-" }
         )
         AlertDialog.Builder(this)
@@ -431,7 +708,7 @@ class MainActivity : Activity() {
     private fun showPaywallDialog() {
         AlertDialog.Builder(this)
             .setTitle(R.string.paywall_title)
-            .setMessage(getString(R.string.paywall_message, currentEmail))
+            .setMessage(getString(R.string.paywall_message, displayEmail()))
             .setCancelable(false)
             .setPositiveButton(R.string.btn_pay) { _, _ -> openPayment() }
             .setNeutralButton(R.string.settings_title) { _, _ -> showSettingsDialog() }
@@ -612,6 +889,9 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        updateDownloadCancelled = true
+        progressDialog?.dismiss()
+        progressDialog = null
         customViewCallback?.onCustomViewHidden()
         customViewCallback = null
         customView = null
