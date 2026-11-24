@@ -22,8 +22,12 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Accept Android SDK licenses
+        run: |
+          SDKMANAGER=$(find "$ANDROID_HOME" -name sdkmanager -type f 2>/dev/null | head -n 1)
+          if [ -n "$SDKMANAGER" ]; then
+            (yes || true) | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          fi
 
       - name: Set up Gradle 9.3.1
         uses: gradle/actions/setup-gradle@v4
@@ -32,7 +36,9 @@ jobs:
 
       - name: Decode release keystore
         run: |
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > app/release.keystore
+          test -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" || { echo "Missing ANDROID_KEYSTORE_BASE64"; exit 1; }
+          printf '%s' "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > app/release.keystore
+          test -s app/release.keystore
 
       - name: Build signed Release APK
         run: |
