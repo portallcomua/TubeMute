@@ -10,8 +10,8 @@ android {
         applicationId "com.custom.reklamoid"
         minSdk 19
         targetSdk 34
-        versionCode 16
-        versionName "2.1.0"
+        versionCode 23
+        versionName "2.1.1"
     }
 
     signingConfigs {
