@@ -58,16 +58,27 @@ jobs:
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)
           "$APKSIGNER" verify --verbose --print-certs "$APK_OUT"
 
+      - name: Package WordPress plugin ZIP
+        run: |
+          mkdir -p wp-build/tubemute-access-api
+          cp server/tubemute-access-api.php wp-build/tubemute-access-api/
+          (cd wp-build && zip -rq ../tubemute-wp-plugin.zip tubemute-access-api)
+          rm -rf wp-build
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: TubeMute-${{ steps.meta.outputs.version }}-APK
-          path: TubeMute-${{ steps.meta.outputs.version }}.apk
+          path: |
+            TubeMute-${{ steps.meta.outputs.version }}.apk
+            tubemute-wp-plugin.zip
 
       - name: Publish GitHub Release on tag
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: TubeMute-${{ steps.meta.outputs.version }}.apk
+          files: |
+            TubeMute-${{ steps.meta.outputs.version }}.apk
+            tubemute-wp-plugin.zip
           generate_release_notes: true
           make_latest: true
