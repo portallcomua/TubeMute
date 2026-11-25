@@ -48,20 +48,26 @@ jobs:
             -PRELEASE_KEY_ALIAS="${{ secrets.ANDROID_KEY_ALIAS }}" \
             -PRELEASE_KEY_PASSWORD="${{ secrets.ANDROID_KEY_PASSWORD }}"
 
-      - name: Verify APK signature
+      - name: Verify APK signature and attach version to filename
+        id: meta
         run: |
+          VERSION=$(grep -m1 'versionName' app/build.gradle | sed -E 's/.*"([^"]+)".*/\1/')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          APK_OUT="TubeMute-${VERSION}.apk"
+          cp app/build/outputs/apk/release/app-release.apk "$APK_OUT"
           APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)
-          "$APKSIGNER" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk
+          "$APKSIGNER" verify --verbose --print-certs "$APK_OUT"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: tubemute-release-apk
-          path: app/build/outputs/apk/release/app-release.apk
+          name: TubeMute-${{ steps.meta.outputs.version }}-APK
+          path: TubeMute-${{ steps.meta.outputs.version }}.apk
 
       - name: Publish GitHub Release on tag
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: app/build/outputs/apk/release/app-release.apk
+          files: TubeMute-${{ steps.meta.outputs.version }}.apk
           generate_release_notes: true
+          make_latest: true
