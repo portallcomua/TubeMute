@@ -1,16 +1,17 @@
-# TubeMute 2.3.2
+# TubeMute 2.3.3
 
 TubeMute is an Android TV / Google TV / Android application with server-managed access, GitHub Releases updates, in-app link/website browsing on smartphones, and offline MP4 saving.
 
-## What's New in 2.3.2
+## What's New in 2.3.3
 
-- **Play Protect Install Compatibility Fix (`2.3.2` / `versionCode 28`)**:
-  - Removed `REQUEST_INSTALL_PACKAGES`, `WRITE_EXTERNAL_STORAGE`, and `UpdateApkProvider` so the manifest uses only the standard `INTERNET` permission (matching `2.1.1`) and avoids triggering `INSTALL_FAILED_VERIFICATION_FAILURE` on Google Play Protect.
-  - Updates still open the direct `TubeMute-<version>.apk` GitHub Release asset link in 1 tap.
-- **Included from 2.3.1 / 2.3.0 / 2.2.0**:
-  - Draggable smartphone **URL | ⚙** bar at bottom-left (no overlap with YouTube's Search icon).
-  - In-app **TubeMute PRO** benefits & account details dialog before opening payment.
-  - In-app **Open link / site** browser + offline MP4 saving (`Movies/TubeMute` via MediaStore) for YouTube (`360p MP4`), websites, and public Facebook videos on smartphones (hidden on Android TV).
-  - Automatic visible Google account detection + **Continue without sign-in** guest device mode.
-- **WordPress Plugin (`server/tubemute-access-api.php` `2.3.2`)**:
-  - Synchronized plugin version `2.3.2` shown in WordPress Admin.
+- **WordPress Plugin GitHub Updater & Whitelist (`server/tubemute-access-api.php` `2.3.3`)**:
+  - Added WordPress native GitHub Releases update integration (`Plugins` page **"Перевірити оновлення"** / 1-click update via `tubemute-wp-plugin.zip`, plus status & download buttons directly inside `TubeMute` admin).
+  - Added **«Білий список email (довічний PRO)»** in plugin Settings so whitelisted emails always receive `LIFETIME` PRO access.
+  - Protected `lifetime = 1` accounts from being overwritten by UA Pay Box sync.
+- **GitHub Actions Release Packaging (`.github/workflows/build.yml`)**:
+  - Automatically packages `tubemute-wp-plugin.zip` (`tubemute-access-api/tubemute-access-api.php`) alongside `TubeMute-<version>.apk` on every release tag.
+- **Clearer License Account Labels (`2.3.3` / `versionCode 29`)**:
+  - Clarified *"Акаунт ліцензії TubeMute (Google)"* / *"Інший email для ліцензії TubeMute"* in Settings so users don't confuse TubeMute license sign-in with YouTube web login.
+- **Included from 2.3.2 / 2.3.1 / 2.3.0**:
+  - Standard `INTERNET`-only manifest permission (Play Protect safe).
+  - Draggable smartphone **URL | ⚙** bar at bottom-left, **TubeMute PRO** info dialog, in-app **Open link / site** browser, and offline MP4 saving (`Movies/TubeMute`).

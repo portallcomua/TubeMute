@@ -2,14 +2,16 @@
 /**
  * Plugin Name: TubeMute
  * Description: Central user, trial, device and PRO access management for TubeMute Android.
- * Version: 2.3.2
+ * Version: 2.3.3
  * Author: UA Server
  */
 if (!defined('ABSPATH')) { exit; }
 
 final class TubeMute {
-    const VERSION = '2.3.2';
+    const VERSION = '2.3.3';
     const DB_VERSION = '2';
+    const GITHUB_REPO = 'portallcomua/TubeMute';
+    const UPDATE_CACHE = 'tubemute_gh_release_cache';
     const TABLE = 'tubemute_users';
     const DEVICES = 'tubemute_devices';
     const OPT = 'tubemute_settings';
@@ -20,6 +22,11 @@ final class TubeMute {
         add_action('plugins_loaded', [__CLASS__, 'maybe_upgrade']);
         add_action('rest_api_init', [__CLASS__, 'routes']);
         add_action('admin_menu', [__CLASS__, 'admin_menu']);
+        add_action('admin_post_tubemute_check_update', [__CLASS__, 'handle_manual_update_check']);
+        add_filter('pre_set_site_transient_update_plugins', [__CLASS__, 'check_plugin_update']);
+        add_filter('plugins_api', [__CLASS__, 'plugin_info'], 20, 3);
+        add_filter('upgrader_source_selection', [__CLASS__, 'fix_upgrader_source'], 10, 4);
+        add_filter('plugin_action_links_' . plugin_basename(__FILE__), [__CLASS__, 'plugin_action_links']);
         add_action(self::CRON, [__CLASS__, 'send_due_reminders']);
         add_action('init', [__CLASS__, 'schedule']);
     }
@@ -35,6 +42,7 @@ final class TubeMute {
             'reminder_days' => 3,
             'admin_email' => get_option('admin_email'),
             'payment_url' => '',
+            'whitelist_emails' => '',
             'paybox_service_id' => 0,
             'product_name' => 'TubeMute PRO',
             'webhook_secret' => '',
@@ -45,6 +53,15 @@ final class TubeMute {
         ];
     }
     private static function settings() { return wp_parse_args(get_option(self::OPT, []), self::defaults()); }
+
+    private static function is_whitelisted_email($email, $settings) {
+        $raw = (string)($settings['whitelist_emails'] ?? '');
+        if ($raw === '' || !$email) { return false; }
+        $items = preg_split('/[\s,;]+/', strtolower($raw));
+        if (!is_array($items)) { return false; }
+        $clean = strtolower(trim($email));
+        return in_array($clean, $items, true);
+    }
 
     public static function activate() {
         global $wpdb;
@@ -153,9 +170,10 @@ final class TubeMute {
 
     private static function sync_paybox_license($user) {
         global $wpdb;
+        if (!$user || (int)$user['lifetime'] === 1) { return $user; }
         $settings = self::settings();
         $service_id = absint($settings['paybox_service_id']);
-        if (!$service_id || !$user) { return $user; }
+        if (!$service_id) { return $user; }
         $table = $wpdb->prefix . 'upb_licenses';
         $exists = $wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $wpdb->esc_like($table)));
         if ($exists !== $table) { return $user; }
@@ -209,7 +227,7 @@ final class TubeMute {
         if ($user['status'] === 'blocked') {
             return rest_ensure_response(['status' => 'blocked', 'payment_url' => $payment_url]);
         }
-        if ((int)$user['lifetime'] === 1) {
+        if ((int)$user['lifetime'] === 1 || self::is_whitelisted_email($email, $settings)) {
             return rest_ensure_response(['status' => 'licensed', 'until' => 'LIFETIME', 'payment_url' => $payment_url]);
         }
         if (!empty($user['access_until']) && self::timestamp($user['access_until']) > $now) {
@@ -366,6 +384,151 @@ final class TubeMute {
         if ($email) { wp_mail($email, $subject, $message, ['Content-Type: text/plain; charset=UTF-8']); }
     }
 
+    private static function plugin_slug() {
+        $dir = dirname(plugin_basename(__FILE__));
+        return ($dir && $dir !== '.') ? $dir : 'tubemute-access-api';
+    }
+
+    private static function fetch_latest_github_release($force = false) {
+        if (!$force) {
+            $cached = get_transient(self::UPDATE_CACHE);
+            if (is_array($cached)) { return $cached; }
+        }
+        $url = 'https://api.github.com/repos/' . self::GITHUB_REPO . '/releases/latest';
+        $res = wp_remote_get($url, [
+            'timeout' => 8,
+            'headers' => [
+                'Accept' => 'application/vnd.github+json',
+                'User-Agent' => 'WordPress-TubeMute/' . self::VERSION,
+            ],
+        ]);
+        if (is_wp_error($res) || (int)wp_remote_retrieve_response_code($res) !== 200) {
+            set_transient(self::UPDATE_CACHE, [], 10 * MINUTE_IN_SECONDS);
+            return [];
+        }
+        $json = json_decode((string)wp_remote_retrieve_body($res), true);
+        if (!is_array($json) || empty($json['tag_name'])) {
+            set_transient(self::UPDATE_CACHE, [], 10 * MINUTE_IN_SECONDS);
+            return [];
+        }
+        $version = ltrim(trim((string)$json['tag_name']), 'vV');
+        $apk_url = '';
+        $apk_name = '';
+        $plugin_zip_url = '';
+        if (!empty($json['assets']) && is_array($json['assets'])) {
+            foreach ($json['assets'] as $asset) {
+                $name = (string)($asset['name'] ?? '');
+                $dl = (string)($asset['browser_download_url'] ?? '');
+                if (!$dl) { continue; }
+                if (strtolower($name) === 'tubemute-wp-plugin.zip') {
+                    $plugin_zip_url = $dl;
+                } elseif (substr(strtolower($name), -4) === '.apk' && !$apk_url) {
+                    $apk_url = $dl;
+                    $apk_name = $name;
+                }
+            }
+        }
+        $data = [
+            'version' => $version,
+            'html_url' => (string)($json['html_url'] ?? ''),
+            'notes' => (string)($json['body'] ?? ''),
+            'apk_url' => $apk_url,
+            'apk_name' => $apk_name,
+            'plugin_zip_url' => $plugin_zip_url,
+        ];
+        set_transient(self::UPDATE_CACHE, $data, 6 * HOUR_IN_SECONDS);
+        return $data;
+    }
+
+    public static function check_plugin_update($transient) {
+        if (!is_object($transient) || empty($transient->checked)) { return $transient; }
+        $release = self::fetch_latest_github_release(false);
+        if (empty($release['version'])) { return $transient; }
+        $plugin_file = plugin_basename(__FILE__);
+        $slug = self::plugin_slug();
+        if (version_compare($release['version'], self::VERSION, '>') && !empty($release['plugin_zip_url'])) {
+            $transient->response[$plugin_file] = (object)[
+                'id' => $plugin_file,
+                'slug' => $slug,
+                'plugin' => $plugin_file,
+                'new_version' => $release['version'],
+                'url' => $release['html_url'],
+                'package' => $release['plugin_zip_url'],
+            ];
+        } else {
+            $transient->no_update[$plugin_file] = (object)[
+                'id' => $plugin_file,
+                'slug' => $slug,
+                'plugin' => $plugin_file,
+                'new_version' => self::VERSION,
+                'url' => $release['html_url'],
+                'package' => '',
+            ];
+        }
+        return $transient;
+    }
+
+    public static function plugin_info($result, $action, $args) {
+        if ($action !== 'plugin_information' || empty($args->slug) || $args->slug !== self::plugin_slug()) {
+            return $result;
+        }
+        $release = self::fetch_latest_github_release(false);
+        if (empty($release['version'])) { return $result; }
+        return (object)[
+            'name' => 'TubeMute',
+            'slug' => self::plugin_slug(),
+            'version' => $release['version'],
+            'author' => 'UA Server',
+            'homepage' => $release['html_url'],
+            'download_link' => $release['plugin_zip_url'],
+            'sections' => [
+                'description' => 'Центральне керування доступом, тестовим періодом та PRO-ліцензіями для додатку TubeMute.',
+                'changelog' => nl2br(esc_html($release['notes'] ?: 'Див. реліз на GitHub.')),
+            ],
+        ];
+    }
+
+    public static function fix_upgrader_source($source, $remote_source, $upgrader, $hook_extra) {
+        global $wp_filesystem;
+        if (empty($hook_extra['plugin']) || $hook_extra['plugin'] !== plugin_basename(__FILE__)) {
+            return $source;
+        }
+        $expected = dirname(plugin_basename(__FILE__));
+        if (!$expected || $expected === '.' || !$wp_filesystem) { return $source; }
+        $desired = trailingslashit($remote_source) . $expected;
+        if (untrailingslashit($source) === untrailingslashit($desired)) { return $source; }
+        if ($wp_filesystem->move($source, $desired, true)) {
+            return trailingslashit($desired);
+        }
+        return $source;
+    }
+
+    public static function plugin_action_links($links) {
+        $settings_url = admin_url('admin.php?page=tubemute');
+        $check_url = wp_nonce_url(admin_url('admin-post.php?action=tubemute_check_update'), 'tubemute_check_update');
+        array_unshift(
+            $links,
+            '<a href="' . esc_url($settings_url) . '">Налаштування</a>',
+            '<a href="' . esc_url($check_url) . '">Перевірити оновлення</a>'
+        );
+        return $links;
+    }
+
+    public static function handle_manual_update_check() {
+        if (!current_user_can('manage_options')) { wp_die('Forbidden'); }
+        check_admin_referer('tubemute_check_update');
+        delete_transient(self::UPDATE_CACHE);
+        self::fetch_latest_github_release(true);
+        delete_site_transient('update_plugins');
+        if (function_exists('wp_update_plugins')) {
+            wp_update_plugins();
+        }
+        $redirect = wp_get_referer() ?: admin_url('plugins.php');
+        $redirect = add_query_arg('tm_checked', '1', $redirect);
+        wp_safe_redirect($redirect);
+        exit;
+    }
+
     public static function admin_menu() {
         add_menu_page('TubeMute', 'TubeMute', 'manage_options', 'tubemute', [__CLASS__, 'admin_page'], 'dashicons-video-alt3');
     }
@@ -375,11 +538,15 @@ final class TubeMute {
         global $wpdb;
         $settings = self::settings();
         $users_table = self::table(self::TABLE);
+        if (!empty($_GET['tm_checked'])) {
+            echo '<div class="notice notice-info"><p>Перевірку оновлень на GitHub виконано.</p></div>';
+        }
         if (isset($_POST['tm_save_settings']) && check_admin_referer('tm_settings')) {
             $settings['trial_days'] = max(1, min(365, absint($_POST['trial_days'] ?? 7)));
             $settings['reminder_days'] = min(30, absint($_POST['reminder_days'] ?? 3));
             $settings['admin_email'] = sanitize_email(wp_unslash($_POST['admin_email'] ?? ''));
             $settings['payment_url'] = esc_url_raw(wp_unslash($_POST['payment_url'] ?? ''));
+            $settings['whitelist_emails'] = sanitize_textarea_field(wp_unslash($_POST['whitelist_emails'] ?? ''));
             $settings['paybox_service_id'] = absint($_POST['paybox_service_id'] ?? 0);
             $settings['product_name'] = sanitize_text_field(wp_unslash($_POST['product_name'] ?? 'TubeMute PRO'));
             $settings['webhook_secret'] = sanitize_text_field(wp_unslash($_POST['webhook_secret'] ?? ''));
@@ -422,15 +589,36 @@ final class TubeMute {
             echo '<div class="notice notice-success"><p>Зміни збережено.</p></div>';
         }
         $settings = self::settings();
+        $release = self::fetch_latest_github_release(false);
+        $check_url = wp_nonce_url(admin_url('admin-post.php?action=tubemute_check_update'), 'tubemute_check_update');
         $rows = $wpdb->get_results("SELECT * FROM $users_table ORDER BY created_at DESC LIMIT 500", ARRAY_A);
         $webhook_url = rest_url('tubemute/v1/webhook');
         echo '<div class="wrap"><h1>TubeMute v' . esc_html(self::VERSION) . ' — керування користувачами</h1>';
+        echo '<div class="card" style="max-width:780px;padding:12px 16px;margin:12px 0;">';
+        echo '<p style="margin:0 0 8px;"><strong>Версія плагіна:</strong> v' . esc_html(self::VERSION);
+        if (!empty($release['version'])) {
+            echo ' &middot; <strong>Останній реліз на GitHub:</strong> v' . esc_html($release['version']);
+            if (version_compare($release['version'], self::VERSION, '>')) {
+                echo ' <span style="color:#d63638;font-weight:600;">(є оновлення!)</span>';
+            }
+        }
+        echo '</p><p style="margin:0;display:flex;gap:8px;flex-wrap:wrap;">';
+        echo '<a class="button button-secondary" href="' . esc_url($check_url) . '">Перевірити оновлення на GitHub</a> ';
+        if (!empty($release['plugin_zip_url'])) {
+            echo '<a class="button button-primary" href="' . esc_url(admin_url('plugins.php')) . '">Оновити в розділі Плагіни</a> ';
+            echo '<a class="button" href="' . esc_url($release['plugin_zip_url']) . '" target="_blank">Завантажити ZIP плагіна</a> ';
+        }
+        if (!empty($release['apk_url'])) {
+            echo '<a class="button" href="' . esc_url($release['apk_url']) . '" target="_blank">Завантажити ' . esc_html($release['apk_name'] ?: 'APK') . '</a>';
+        }
+        echo '</p></div>';
         echo '<h2>Налаштування</h2><form method="post">';
         wp_nonce_field('tm_settings');
         echo '<table class="form-table"><tr><th>Тестовий період, днів</th><td><input type="number" min="1" max="365" name="trial_days" value="'.esc_attr($settings['trial_days']).'"></td></tr>';
         echo '<tr><th>Нагадувати за, днів</th><td><input type="number" min="0" max="30" name="reminder_days" value="'.esc_attr($settings['reminder_days']).'"></td></tr>';
         echo '<tr><th>Email адміністратора</th><td><input type="email" class="regular-text" name="admin_email" value="'.esc_attr($settings['admin_email']).'"></td></tr>';
         echo '<tr><th>Посилання на оплату PRO (UA Pay Box)</th><td><input type="url" class="large-text" name="payment_url" value="'.esc_attr($settings['payment_url']).'"></td></tr>';
+        echo '<tr><th>Білий список email (довічний PRO)</th><td><textarea name="whitelist_emails" rows="4" class="large-text" placeholder="user@gmail.com">'.esc_textarea($settings['whitelist_emails']).'</textarea><p class="description">По одному email в рядок або через кому. Ці адреси завжди отримують довічний доступ PRO.</p></td></tr>';
         echo '<tr><th>ID проєкту UA Pay Box</th><td><input type="number" min="1" name="paybox_service_id" value="'.esc_attr($settings['paybox_service_id']).'"><p class="description">TubeMute автоматично перевіряє таблицю ліцензій UA Pay Box у цій самій базі WordPress. Код UA Pay Box змінювати не потрібно.</p></td></tr>';
         echo '<tr><th>Назва продукту</th><td><input type="text" class="regular-text" name="product_name" value="'.esc_attr($settings['product_name']).'"></td></tr>';
         echo '<tr><th>Секрет webhook</th><td><input type="password" class="regular-text" name="webhook_secret" value="'.esc_attr($settings['webhook_secret']).'" autocomplete="new-password"><p class="description">Для власного платіжного webhook із заголовком X-TubeMute-Secret.</p></td></tr>';
@@ -449,8 +637,9 @@ final class TubeMute {
         echo '<table class="widefat striped"><thead><tr><th>Email</th><th>Реєстрація</th><th>Тест до</th><th>PRO до</th><th>Статус</th><th>Дії</th></tr></thead><tbody>';
         if (!$rows) { echo '<tr><td colspan="6">Поки немає користувачів.</td></tr>'; }
         foreach ($rows as $u) {
-            $status = $u['status']==='blocked' ? 'Заблоковано' : ((int)$u['lifetime'] ? 'Довічний PRO' : (!empty($u['access_until']) && self::timestamp($u['access_until'])>time() ? 'PRO' : (self::timestamp($u['trial_until'])>time() ? 'Тест' : 'Тест завершено')));
-            echo '<tr><td>'.esc_html($u['email']).'</td><td>'.esc_html($u['created_at']).'</td><td>'.esc_html($u['trial_until']).'</td><td>'.esc_html((int)$u['lifetime']?'Довічно':($u['access_until']?:'—')).'</td><td>'.esc_html($status).'</td><td><form method="post" style="display:flex;gap:5px;flex-wrap:wrap">';
+            $is_wl = self::is_whitelisted_email($u['email'], $settings);
+            $status = $u['status']==='blocked' ? 'Заблоковано' : (((int)$u['lifetime'] || $is_wl) ? 'Довічний PRO' : (!empty($u['access_until']) && self::timestamp($u['access_until'])>time() ? 'PRO' : (self::timestamp($u['trial_until'])>time() ? 'Тест' : 'Тест завершено')));
+            echo '<tr><td>'.esc_html($u['email']).'</td><td>'.esc_html($u['created_at']).'</td><td>'.esc_html($u['trial_until']).'</td><td>'.esc_html(((int)$u['lifetime'] || $is_wl)?'Довічно':($u['access_until']?:'—')).'</td><td>'.esc_html($status).'</td><td><form method="post" style="display:flex;gap:5px;flex-wrap:wrap">';
             wp_nonce_field('tm_user_action');
             echo '<input type="hidden" name="user_id" value="'.(int)$u['id'].'">';
             echo '<button class="button" name="tm_action" value="lifetime">Довічно</button><button class="button" name="tm_action" value="revoke">Відкликати PRO</button><button class="button" name="tm_action" value="'.($u['status']==='blocked'?'unblock':'block').'">'.($u['status']==='blocked'?'Розблокувати':'Блокувати').'</button></form></td></tr>';

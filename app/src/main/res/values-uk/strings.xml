@@ -30,8 +30,8 @@
     <string name="settings_summary">v%1$s · %2$s · %3$s</string>
     <string name="settings_test_access">Тест доступу / Оновити статус</string>
     <string name="settings_check_updates">Перевірити оновлення (GitHub)</string>
-    <string name="settings_choose_device_account">Обрати акаунт Google пристрою</string>
-    <string name="settings_enter_email">Ввести інший email</string>
+    <string name="settings_choose_device_account">Акаунт ліцензії TubeMute (Google)</string>
+    <string name="settings_enter_email">Інший email для ліцензії TubeMute</string>
     <string name="btn_close">Закрити</string>
     <string name="checking_updates">Перевіряємо GitHub Releases...</string>
     <string name="up_to_date">У вас найновіша версія (%1$s).</string>

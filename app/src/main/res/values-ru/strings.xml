@@ -30,8 +30,8 @@
     <string name="settings_summary">v%1$s · %2$s · %3$s</string>
     <string name="settings_test_access">Тест доступа / Обновить статус</string>
     <string name="settings_check_updates">Проверить обновления (GitHub)</string>
-    <string name="settings_choose_device_account">Выбрать аккаунт Google устройства</string>
-    <string name="settings_enter_email">Ввести другой email</string>
+    <string name="settings_choose_device_account">Аккаунт лицензии TubeMute (Google)</string>
+    <string name="settings_enter_email">Другой email для лицензии TubeMute</string>
     <string name="btn_close">Закрыть</string>
     <string name="checking_updates">Проверяем GitHub Releases...</string>
     <string name="up_to_date">У вас последняя версия (%1$s).</string>

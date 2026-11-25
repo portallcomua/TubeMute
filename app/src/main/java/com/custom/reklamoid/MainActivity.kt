@@ -109,9 +109,9 @@ class MainActivity : Activity() {
     private val appVersionName: String
         get() = try {
             @Suppress("DEPRECATION")
-            packageManager.getPackageInfo(packageName, 0).versionName ?: "2.3.2"
+            packageManager.getPackageInfo(packageName, 0).versionName ?: "2.3.3"
         } catch (_: Exception) {
-            "2.3.2"
+            "2.3.3"
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
