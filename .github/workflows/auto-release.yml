@@ -1,0 +1,84 @@
+name: TubeMute Auto Release
+
+on:
+  workflow_run:
+    workflows:
+      - Build TubeMute APK
+    types:
+      - completed
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish-latest-apk:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download APK and plugin artifacts from the successful build
+        uses: actions/download-artifact@v5
+        with:
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: dist
+
+      - name: Publish a permanent latest-APK download link
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCE_BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -euo pipefail
+
+          APK_PATH="$(find dist -type f -name 'TubeMute-*.apk' ! -name 'TubeMute-latest.apk' -print -quit)"
+          if [ -z "$APK_PATH" ]; then
+            echo "The successful build did not contain a versioned TubeMute APK."
+            find dist -maxdepth 4 -type f -print || true
+            exit 1
+          fi
+
+          APK_NAME="$(basename "$APK_PATH")"
+          VERSION="${APK_NAME#TubeMute-}"
+          VERSION="${VERSION%.apk}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Unexpected APK version in filename: $APK_NAME"
+            exit 1
+          fi
+
+          TAG="v$VERSION"
+          ZIP_PATH="$(find dist -type f -name 'tubemute-wp-plugin.zip' -print -quit)"
+          mkdir -p release-assets
+
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            # Reuse the APK already attached to this release, so the permanent
+            # link always points to the exact published release binary.
+            if ! gh release download "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --pattern "$APK_NAME" \
+              --dir release-assets; then
+              echo "The release has no $APK_NAME asset; using the APK from the successful build."
+              cp "$APK_PATH" "release-assets/$APK_NAME"
+            fi
+            cp "release-assets/$APK_NAME" "TubeMute-latest.apk"
+            gh release upload "$TAG" TubeMute-latest.apk \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+          else
+            if [ -z "$ZIP_PATH" ]; then
+              echo "The build did not contain tubemute-wp-plugin.zip."
+              exit 1
+            fi
+            cp "$APK_PATH" TubeMute-latest.apk
+            gh release create "$TAG" \
+              "$APK_PATH" \
+              "$ZIP_PATH" \
+              TubeMute-latest.apk \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "TubeMute $VERSION" \
+              --generate-notes \
+              --latest
+          fi
+
+          echo "Stable APK URL:"
+          echo "https://github.com/$GITHUB_REPOSITORY/releases/latest/download/TubeMute-latest.apk"
+          echo "Published release: $TAG (build source: $SOURCE_BRANCH)"
