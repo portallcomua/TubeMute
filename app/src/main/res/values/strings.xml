@@ -50,4 +50,25 @@
     <string name="install_permission_title">Allow update installation</string>
     <string name="install_permission_message">Please allow TubeMute to install updates once, then press Back to continue installation.</string>
     <string name="btn_open_settings">Open settings</string>
+    <string name="save_video_title">Save video to phone?</string>
+    <string name="save_video_message">Save this video (360p MP4) to your phone? You can always delete it in your Video downloads folder (Movies/TubeMute).</string>
+    <string name="save_external_video_message">Save this video (MP4) to your phone? You can always delete it in your Video downloads folder (Movies/TubeMute).</string>
+    <string name="btn_yes">Yes</string>
+    <string name="btn_no">No</string>
+    <string name="video_download_started">Downloading compressed 360p video in background...</string>
+    <string name="video_download_started_mp4">Downloading MP4 video in background...</string>
+    <string name="video_download_failed">Could not save this video offline (%1$s).</string>
+    <string name="video_downloaded_title">Video downloaded</string>
+    <string name="video_downloaded_message">The video has been saved. Now you can continue watching without using mobile internet.</string>
+    <string name="btn_watch_offline">Watch on phone</string>
+    <string name="video_open_error">Could not open offline video player.</string>
+    <string name="settings_open_link">Open link / site</string>
+    <string name="settings_back_to_youtube">Back to YouTube</string>
+    <string name="open_link_title">Open link / site</string>
+    <string name="open_link_message">Paste a video link or website address (for example, Facebook or any site with video).</string>
+    <string name="open_link_hint">https://...</string>
+    <string name="btn_open">Open</string>
+    <string name="btn_open_youtube">YouTube</string>
+    <string name="err_invalid_url">Enter a valid website address (https://...).</string>
+    <string name="btn_url_short">URL</string>
 </resources>

@@ -1,15 +1,16 @@
-# TubeMute 2.1.2
+# TubeMute 2.3.0
 
-TubeMute is an Android TV / Google TV / Android application with server-managed access and GitHub Releases self-update.
+TubeMute is an Android TV / Google TV / Android application with server-managed access, GitHub Releases self-update, in-app link/website browsing on smartphones, and offline MP4 saving.
 
-## What's New in 2.1.2
+## What's New in 2.3.0
 
-- **Android App (`2.1.2` / `versionCode 24`)**:
-  - Automatic visible Google account detection on first launch, plus one-tap **Continue without sign-in** guest device mode (no forced email/password on TVs without an account).
-  - Direct in-app GitHub Releases updater: downloads the `.apk` with live progress inside the app and launches Android's system installer directly via `UpdateApkProvider` (no browser download step).
-  - Settings menu (`⚙`, also via TV remote `Menu`/`Settings`) with **Test access**, **Check for updates**, **Select device Google account**, **Enter another email**, and **Purchase PRO**.
-  - `android:installLocation="auto"`, `configChanges` for smooth orientation/resize, V1+V2 signing with `release.keystore`.
-- **WordPress Plugin (`server/tubemute-access-api.php` `2.1.2`)**:
-  - Synchronized plugin version `2.1.2` shown in WordPress Admin.
-- **CI/CD (`.github/workflows/build.yml`)**:
-  - Builds signed Release APK (`TubeMute-<version>.apk`) with Gradle 9.3.1 / JDK 21, verifies signature with `apksigner`, uploads versioned artifact (`TubeMute-<version>-APK`), and attaches `TubeMute-<version>.apk` to GitHub Releases on `v*` tags.
+- **In-App «Open link / site» on Smartphones (`2.3.0` / `versionCode 26`)**:
+  - Hidden on Android TV / Smart TV (`FEATURE_LEANBACK` / `UI_MODE_TYPE_TELEVISION`).
+  - Smartphones get a quick **URL** button next to Settings (and **Open link / site** inside Settings) to paste or open any HTTPS website or Facebook video link directly inside TubeMute, plus a 1-tap **Back to YouTube** option.
+  - Detects progressive MP4 streams on opened websites and public Facebook video pages, offering the same **Yes / No** save-to-phone popup (`Movies/TubeMute`) and seamless switch to the built-in offline player.
+- **Included from 2.2.0**:
+  - Smartphone-only offline **360p MP4** saving on YouTube with **Yes / No** prompt and built-in offline `VideoView` player.
+  - Automatic visible Google account detection + **Continue without sign-in** guest device mode.
+  - Direct in-app GitHub Releases updater via `UpdateApkProvider` (`TubeMute-<version>.apk`).
+- **WordPress Plugin (`server/tubemute-access-api.php` `2.3.0`)**:
+  - Synchronized plugin version `2.3.0` shown in WordPress Admin.

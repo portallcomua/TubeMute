@@ -4,28 +4,39 @@ import android.accounts.AccountManager
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.AlertDialog
+import android.app.UiModeManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.graphics.Color
+import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.text.InputType
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
+import android.webkit.CookieManager
+import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.MediaController
 import android.widget.TextView
 import android.widget.Toast
+import android.widget.VideoView
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
@@ -70,6 +81,20 @@ class MainActivity : Activity() {
     private var pendingInstallApkPath: String? = null
     private var pendingFallbackUrl = ""
     private var progressDialog: AlertDialog? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var videoPromptRunnable: Runnable? = null
+    private var currentPromptedVideoId = ""
+    private val promptedVideoIds = mutableSetOf<String>()
+    private val downloadingVideoIds = mutableSetOf<String>()
+    private var customBrowsingActive = false
+    private var currentWebUrl = ""
+    private var currentWebUserAgent = ""
+    private val promptedExternalMediaUrls = mutableSetOf<String>()
+    private val downloadingExternalMediaUrls = mutableSetOf<String>()
+    @Volatile private var lastSniffedMp4Url = ""
+    @Volatile private var lastSniffedPageUrl = ""
+    private var offlineOverlay: FrameLayout? = null
+    private var offlineVideoView: VideoView? = null
 
     @Volatile private var requestInProgress = false
     @Volatile private var updateCheckInProgress = false
@@ -90,9 +115,9 @@ class MainActivity : Activity() {
     private val appVersionName: String
         get() = try {
             @Suppress("DEPRECATION")
-            packageManager.getPackageInfo(packageName, 0).versionName ?: "2.1.2"
+            packageManager.getPackageInfo(packageName, 0).versionName ?: "2.3.0"
         } catch (_: Exception) {
-            "2.1.2"
+            "2.3.0"
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -652,13 +677,24 @@ class MainActivity : Activity() {
     }
 
     private fun showSettingsDialog() {
-        val items = arrayOf(
-            getString(R.string.settings_test_access),
-            getString(R.string.settings_check_updates),
-            getString(R.string.settings_choose_device_account),
-            getString(R.string.settings_enter_email),
-            getString(R.string.btn_pay)
-        )
+        val entries = mutableListOf<Pair<String, () -> Unit>>()
+        if (isSmartphoneDevice()) {
+            entries.add(getString(R.string.settings_open_link) to { showOpenLinkDialog() })
+            if (customBrowsingActive || (currentWebUrl.isNotBlank() && !isYouTubeHost(currentWebUrl))) {
+                entries.add(
+                    getString(R.string.settings_back_to_youtube) to {
+                        openUrlInWebView(youtubeStartUrl(), customBrowsing = false)
+                    }
+                )
+            }
+        }
+        entries.add(getString(R.string.settings_test_access) to { checkAccess() })
+        entries.add(getString(R.string.settings_check_updates) to { checkForUpdates(manual = true) })
+        entries.add(getString(R.string.settings_choose_device_account) to { launchAccountPicker() })
+        entries.add(getString(R.string.settings_enter_email) to { showRegistrationDialog() })
+        entries.add(getString(R.string.btn_pay) to { openPayment() })
+
+        val labels = entries.map { it.first }.toTypedArray()
         val info = getString(
             R.string.settings_summary,
             appVersionName,
@@ -667,17 +703,73 @@ class MainActivity : Activity() {
         )
         AlertDialog.Builder(this)
             .setTitle("${getString(R.string.settings_title)} ($info)")
-            .setItems(items) { _, which ->
-                when (which) {
-                    0 -> checkAccess()
-                    1 -> checkForUpdates(manual = true)
-                    2 -> launchAccountPicker()
-                    3 -> showRegistrationDialog()
-                    4 -> openPayment()
-                }
+            .setItems(labels) { _, which ->
+                entries.getOrNull(which)?.second?.invoke()
             }
             .setNegativeButton(R.string.btn_close, null)
             .show()
+    }
+
+    private fun showOpenLinkDialog(initialText: String = "") {
+        val input = EditText(this).apply {
+            hint = getString(R.string.open_link_hint)
+            if (initialText.isNotBlank()) {
+                setText(initialText)
+            } else if (customBrowsingActive && currentWebUrl.isNotBlank()) {
+                setText(currentWebUrl)
+            }
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+            setSingleLine(true)
+            isFocusable = true
+            isFocusableInTouchMode = true
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.open_link_title)
+            .setMessage(R.string.open_link_message)
+            .setView(input)
+            .setPositiveButton(R.string.btn_open) { _, _ ->
+                val raw = input.text.toString().trim()
+                val validUrl = normalizeAndValidateUserUrl(raw)
+                if (validUrl == null) {
+                    Toast.makeText(this, R.string.err_invalid_url, Toast.LENGTH_LONG).show()
+                    showOpenLinkDialog(raw)
+                } else {
+                    openUrlInWebView(validUrl, customBrowsing = !isYouTubeHost(validUrl))
+                }
+            }
+            .setNeutralButton(R.string.btn_open_youtube) { _, _ ->
+                openUrlInWebView(youtubeStartUrl(), customBrowsing = false)
+            }
+            .setNegativeButton(R.string.btn_close, null)
+            .show()
+    }
+
+    private fun normalizeAndValidateUserUrl(raw: String): String? {
+        val trimmed = raw.trim()
+        if (trimmed.isBlank()) return null
+        val withScheme = when {
+            trimmed.startsWith("https://", ignoreCase = true) -> "https://" + trimmed.substring(8)
+            trimmed.startsWith("http://", ignoreCase = true) -> "https://" + trimmed.substring(7)
+            trimmed.contains("://") -> return null
+            else -> "https://$trimmed"
+        }
+        return if (OfflineVideoDownloader.isSafeHttpsSyntaxAndLiteral(withScheme)) withScheme else null
+    }
+
+    private fun openUrlInWebView(targetUrl: String, customBrowsing: Boolean) {
+        currentPromptedVideoId = ""
+        videoPromptRunnable?.let { mainHandler.removeCallbacks(it) }
+        videoPromptRunnable = null
+        lastSniffedMp4Url = ""
+        lastSniffedPageUrl = ""
+        customBrowsingActive = customBrowsing
+        currentWebUrl = targetUrl
+        val player = webView
+        if (player == null) {
+            initYouTubePlayer(targetUrl)
+        } else {
+            player.loadUrl(targetUrl)
+        }
     }
 
     private fun showTrialReminder(days: Int) {
@@ -743,11 +835,27 @@ class MainActivity : Activity() {
         return if (isAndroidTv) "https://www.youtube.com/tv" else "https://m.youtube.com"
     }
 
+    private fun isYouTubeHost(rawUrl: String?): Boolean {
+        if (rawUrl.isNullOrBlank()) return false
+        val host = try {
+            Uri.parse(rawUrl).host?.lowercase(Locale.ROOT).orEmpty()
+        } catch (_: Exception) {
+            ""
+        }
+        return host == "youtube.com" || host.endsWith(".youtube.com") || host == "youtu.be"
+    }
+
     private fun handleNavigationUrl(uri: Uri?): Boolean {
         val scheme = uri?.scheme?.lowercase(Locale.ROOT) ?: return true
         val host = uri.host?.lowercase(Locale.ROOT) ?: return true
         if (scheme == "https" && ALLOWED_WEBVIEW_HOSTS.any { host == it || host.endsWith(".$it") }) {
             return false
+        }
+        if (isSmartphoneDevice() && customBrowsingActive) {
+            if (scheme == "https" && OfflineVideoDownloader.isSafeHttpsSyntaxAndLiteral(uri.toString())) {
+                return false
+            }
+            return true
         }
         if (scheme == "https" || scheme == "http") {
             try {
@@ -784,8 +892,36 @@ class MainActivity : Activity() {
         }
     }
 
-    @SuppressLint("SetJavaScriptEnabled")
-    private fun initYouTubePlayer() {
+    private fun createOpenLinkOverlayButton(): TextView {
+        val density = resources.displayMetrics.density
+        val sizePx = (40 * density).toInt()
+        val marginPx = (12 * density).toInt()
+        val gapPx = (8 * density).toInt()
+        val bg = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(Color.argb(150, 15, 23, 42))
+            setStroke((1 * density).toInt(), Color.argb(90, 255, 255, 255))
+        }
+        return TextView(this).apply {
+            text = getString(R.string.btn_url_short)
+            setTextColor(Color.WHITE)
+            textSize = 11f
+            setTypeface(null, Typeface.BOLD)
+            gravity = Gravity.CENTER
+            background = bg
+            isFocusable = true
+            isFocusableInTouchMode = true
+            contentDescription = getString(R.string.open_link_title)
+            layoutParams = FrameLayout.LayoutParams(sizePx, sizePx, Gravity.TOP or Gravity.END).apply {
+                topMargin = marginPx
+                rightMargin = marginPx + sizePx + gapPx
+            }
+            setOnClickListener { showOpenLinkDialog() }
+        }
+    }
+
+    @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
+    private fun initYouTubePlayer(initialUrl: String = youtubeStartUrl()) {
         customView = null
         customViewCallback = null
         val player = WebView(this)
@@ -800,12 +936,21 @@ class MainActivity : Activity() {
                 FrameLayout.LayoutParams.MATCH_PARENT
             )
         )
+        if (isSmartphoneDevice()) {
+            container.addView(createOpenLinkOverlayButton())
+        }
         container.addView(createSettingsOverlayButton())
         setContentView(container)
 
         player.isFocusable = true
         player.isFocusableInTouchMode = true
         player.requestFocus()
+
+        val cookieManager = CookieManager.getInstance()
+        cookieManager.setAcceptCookie(true)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            cookieManager.setAcceptThirdPartyCookies(player, true)
+        }
 
         val settings: WebSettings = player.settings
         settings.javaScriptEnabled = true
@@ -817,6 +962,11 @@ class MainActivity : Activity() {
         settings.useWideViewPort = true
         settings.loadWithOverviewMode = true
         settings.cacheMode = WebSettings.LOAD_DEFAULT
+        currentWebUserAgent = settings.userAgentString.orEmpty()
+
+        if (isSmartphoneDevice()) {
+            player.addJavascriptInterface(ExternalVideoBridge(), "TubeMuteBridge")
+        }
 
         player.webChromeClient = object : WebChromeClient() {
             override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
@@ -842,8 +992,485 @@ class MainActivity : Activity() {
             override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
                 return handleNavigationUrl(url?.let { Uri.parse(it) })
             }
+
+            override fun shouldInterceptRequest(
+                view: WebView?,
+                request: WebResourceRequest?
+            ): WebResourceResponse? {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP &&
+                    isSmartphoneDevice() &&
+                    customBrowsingActive
+                ) {
+                    val reqUrl = request?.url?.toString().orEmpty()
+                    if (isLikelyProgressiveMp4Url(reqUrl)) {
+                        lastSniffedMp4Url = reqUrl
+                        lastSniffedPageUrl = currentWebUrl
+                    }
+                }
+                return null
+            }
+
+            override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
+                super.doUpdateVisitedHistory(view, url, isReload)
+                currentWebUrl = url.orEmpty()
+                if (isYouTubeHost(url)) {
+                    customBrowsingActive = false
+                    onYouTubeUrlVisited(url)
+                } else if (isSmartphoneDevice()) {
+                    videoPromptRunnable?.let { mainHandler.removeCallbacks(it) }
+                    videoPromptRunnable = null
+                    mainHandler.postDelayed({ injectExternalVideoWatcher() }, 450L)
+                }
+            }
+
+            override fun onPageFinished(view: WebView?, url: String?) {
+                super.onPageFinished(view, url)
+                currentWebUrl = url.orEmpty()
+                if (isYouTubeHost(url)) {
+                    customBrowsingActive = false
+                    onYouTubeUrlVisited(url)
+                } else if (isSmartphoneDevice()) {
+                    injectExternalVideoWatcher()
+                }
+            }
         }
-        player.loadUrl(youtubeStartUrl())
+        currentWebUrl = initialUrl
+        player.loadUrl(initialUrl)
+    }
+
+    private fun isSmartphoneDevice(): Boolean {
+        if (packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)) return false
+        val uiModeManager = getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager
+        if (uiModeManager?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION) return false
+        return true
+    }
+
+    private fun extractYouTubeVideoId(rawUrl: String?): String {
+        if (rawUrl.isNullOrBlank()) return ""
+        val uri = try { Uri.parse(rawUrl) } catch (_: Exception) { return "" }
+        val host = uri.host?.lowercase(Locale.ROOT).orEmpty()
+        if (!host.contains("youtube.com") && host != "youtu.be") return ""
+        val path = uri.path.orEmpty()
+        if (path.startsWith("/watch")) {
+            return uri.getQueryParameter("v")?.trim().orEmpty()
+        }
+        if (path.startsWith("/shorts/")) {
+            return path.removePrefix("/shorts/").substringBefore('/').trim()
+        }
+        if (host == "youtu.be") {
+            return path.trimStart('/').substringBefore('/').trim()
+        }
+        return ""
+    }
+
+    private fun onYouTubeUrlVisited(url: String?) {
+        if (!isSmartphoneDevice()) return
+        val videoId = extractYouTubeVideoId(url)
+        if (videoId.isBlank()) {
+            currentPromptedVideoId = ""
+            videoPromptRunnable?.let { mainHandler.removeCallbacks(it) }
+            videoPromptRunnable = null
+            return
+        }
+        if (videoId == currentPromptedVideoId || promptedVideoIds.contains(videoId)) return
+        currentPromptedVideoId = videoId
+        videoPromptRunnable?.let { mainHandler.removeCallbacks(it) }
+        val runnable = Runnable {
+            if (isFinishing || offlineOverlay != null || currentPromptedVideoId != videoId) return@Runnable
+            if (promptedVideoIds.contains(videoId)) return@Runnable
+            promptedVideoIds.add(videoId)
+            showSaveVideoPrompt(videoId)
+        }
+        videoPromptRunnable = runnable
+        mainHandler.postDelayed(runnable, 1800L)
+    }
+
+    private fun pauseWebVideoPlayback() {
+        webView?.evaluateJavascript(
+            "(function(){document.querySelectorAll('video').forEach(function(v){if(!v.paused){v.dataset.tmWasPlaying='1';v.pause();}});})();",
+            null
+        )
+    }
+
+    private fun resumeWebVideoPlayback() {
+        webView?.evaluateJavascript(
+            "(function(){document.querySelectorAll('video').forEach(function(v){if(v.dataset.tmWasPlaying==='1'){v.dataset.tmWasPlaying='';var p=v.play();if(p&&p.catch)p.catch(function(){});}});})();",
+            null
+        )
+    }
+
+    private fun showSaveVideoPrompt(videoId: String) {
+        pauseWebVideoPlayback()
+        AlertDialog.Builder(this)
+            .setTitle(R.string.save_video_title)
+            .setMessage(R.string.save_video_message)
+            .setCancelable(false)
+            .setPositiveButton(R.string.btn_yes) { _, _ ->
+                resumeWebVideoPlayback()
+                startOfflineVideoDownload(videoId)
+            }
+            .setNegativeButton(R.string.btn_no) { _, _ ->
+                resumeWebVideoPlayback()
+            }
+            .show()
+    }
+
+    private fun startOfflineVideoDownload(videoId: String) {
+        if (downloadingVideoIds.contains(videoId)) return
+        downloadingVideoIds.add(videoId)
+        Toast.makeText(this, R.string.video_download_started, Toast.LENGTH_SHORT).show()
+        thread {
+            try {
+                val savedUri = OfflineVideoDownloader.download360p(applicationContext, videoId)
+                runOnUiThread {
+                    downloadingVideoIds.remove(videoId)
+                    if (!isFinishing) {
+                        showVideoDownloadedDialog(savedUri)
+                    }
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    downloadingVideoIds.remove(videoId)
+                    if (!isFinishing) {
+                        Toast.makeText(
+                            this,
+                            getString(R.string.video_download_failed, e.message ?: ""),
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun isLikelyProgressiveMp4Url(url: String): Boolean {
+        if (!url.startsWith("https://", ignoreCase = true)) return false
+        val lower = url.lowercase(Locale.ROOT)
+        if (lower.contains("youtube.com") || lower.contains("youtu.be") ||
+            lower.contains("googlevideo.com") || lower.contains("doubleclick.net") ||
+            lower.contains("googlesyndication.com")
+        ) {
+            return false
+        }
+        if (lower.contains(".m3u8") || lower.contains(".mpd") || lower.contains(".m4a") ||
+            lower.contains("bytestart=") || lower.contains("byteend=") ||
+            lower.contains("range=") || lower.contains("dash_") ||
+            lower.contains("mime=audio") || lower.contains("mime_type=audio")
+        ) {
+            return false
+        }
+        val pathOnly = lower.substringBefore('?')
+        return pathOnly.endsWith(".mp4") ||
+            lower.contains("mime=video/mp4") ||
+            lower.contains("mime=video%2fmp4") ||
+            lower.contains("mime_type=video_mp4")
+    }
+
+    private fun injectExternalVideoWatcher() {
+        val player = webView ?: return
+        if (isYouTubeHost(currentWebUrl)) return
+        val js = """
+            (function() {
+              if (location.hostname.indexOf('youtube.') !== -1 || location.hostname === 'youtu.be') return;
+              function findMetaOrFbMp4() {
+                var metas = ['meta[property="og:video:secure_url"]','meta[property="og:video:url"]','meta[property="og:video"]'];
+                for (var i = 0; i < metas.length; i++) {
+                  var m = document.querySelector(metas[i]);
+                  if (m && m.content && m.content.indexOf('https://') === 0 && m.content.indexOf('.m3u8') === -1) {
+                    return m.content;
+                  }
+                }
+                var scripts = document.scripts;
+                var keys = ['"browser_native_sd_url":"', '"playable_url":"', '"sd_src_no_ratelimit":"', '"sd_src":"'];
+                for (var k = 0; k < keys.length; k++) {
+                  var key = keys[k];
+                  for (var s = scripts.length - 1; s >= 0; s--) {
+                    var txt = scripts[s].textContent || '';
+                    var idx = txt.lastIndexOf(key);
+                    if (idx !== -1) {
+                      var start = idx + key.length;
+                      var end = txt.indexOf('"', start);
+                      if (end > start && end - start < 2000) {
+                        try {
+                          var decoded = JSON.parse('"' + txt.slice(start, end) + '"');
+                          if (decoded && decoded.indexOf('https://') === 0) return decoded;
+                        } catch (e) {}
+                      }
+                    }
+                  }
+                }
+                return '';
+              }
+              function inspectVideo(v) {
+                if (!v || (v.duration && v.duration < 3)) return;
+                var src = v.currentSrc || v.src || '';
+                if (!src) {
+                  var s = v.querySelector('source');
+                  if (s && s.src) src = s.src;
+                }
+                if (src && src.indexOf('https://') === 0 && src.indexOf('.m3u8') === -1 && src.indexOf('.mpd') === -1) {
+                  window.TubeMuteBridge && window.TubeMuteBridge.onVideoCandidate(src, document.title || '', location.href);
+                  return;
+                }
+                var alt = findMetaOrFbMp4();
+                if (alt) {
+                  window.TubeMuteBridge && window.TubeMuteBridge.onVideoCandidate(alt, document.title || '', location.href);
+                } else if (src && src.indexOf('blob:') === 0) {
+                  window.TubeMuteBridge && window.TubeMuteBridge.onBlobVideoPlaying(document.title || '', location.href);
+                }
+              }
+              window.__tmScanExternalVideos = function() {
+                var vids = document.querySelectorAll('video');
+                for (var i = 0; i < vids.length; i++) {
+                  if (!vids[i].paused && !vids[i].ended && vids[i].readyState >= 2) {
+                    inspectVideo(vids[i]);
+                    break;
+                  }
+                }
+              };
+              if (!window.__tmExtBound) {
+                window.__tmExtBound = true;
+                document.addEventListener('play', function(e) {
+                  if (e && e.target && e.target.tagName === 'VIDEO') {
+                    setTimeout(function() { inspectVideo(e.target); }, 600);
+                  }
+                }, true);
+              }
+              window.__tmScanExternalVideos();
+            })();
+        """.trimIndent()
+        player.evaluateJavascript(js, null)
+    }
+
+    private inner class ExternalVideoBridge {
+        @JavascriptInterface
+        fun onVideoCandidate(videoUrl: String?, pageTitle: String?, pageUrl: String?) {
+            val media = videoUrl?.trim().orEmpty()
+            val title = pageTitle?.trim().orEmpty()
+            val page = pageUrl?.trim().orEmpty()
+            runOnUiThread {
+                handleExternalVideoCandidate(media, title, page)
+            }
+        }
+
+        @JavascriptInterface
+        fun onBlobVideoPlaying(pageTitle: String?, pageUrl: String?) {
+            val sniffed = lastSniffedMp4Url
+            val page = pageUrl?.trim().orEmpty()
+            if (sniffed.isBlank()) return
+            val title = pageTitle?.trim().orEmpty()
+            runOnUiThread {
+                if (lastSniffedPageUrl.isBlank() || sameUrlOrigin(lastSniffedPageUrl, page)) {
+                    handleExternalVideoCandidate(sniffed, title, page)
+                }
+            }
+        }
+    }
+
+    private fun sameUrlOrigin(a: String, b: String): Boolean {
+        return try {
+            val ua = Uri.parse(a)
+            val ub = Uri.parse(b)
+            ua.host?.equals(ub.host, ignoreCase = true) == true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun handleExternalVideoCandidate(mediaUrl: String, pageTitle: String, pageUrl: String) {
+        if (!isSmartphoneDevice() || isFinishing || offlineOverlay != null) return
+        if (isYouTubeHost(currentWebUrl) || isYouTubeHost(pageUrl)) return
+        if (!OfflineVideoDownloader.isSafeHttpsSyntaxAndLiteral(mediaUrl)) return
+        val key = mediaUrl.substringBefore('#')
+        if (promptedExternalMediaUrls.contains(key) || downloadingExternalMediaUrls.contains(key)) return
+        promptedExternalMediaUrls.add(key)
+
+        videoPromptRunnable?.let { mainHandler.removeCallbacks(it) }
+        val runnable = Runnable {
+            if (isFinishing || offlineOverlay != null || isYouTubeHost(currentWebUrl)) return@Runnable
+            showSaveExternalVideoPrompt(mediaUrl, pageTitle, pageUrl)
+        }
+        videoPromptRunnable = runnable
+        mainHandler.postDelayed(runnable, 1000L)
+    }
+
+    private fun showSaveExternalVideoPrompt(mediaUrl: String, pageTitle: String, pageUrl: String) {
+        pauseWebVideoPlayback()
+        AlertDialog.Builder(this)
+            .setTitle(R.string.save_video_title)
+            .setMessage(R.string.save_external_video_message)
+            .setCancelable(false)
+            .setPositiveButton(R.string.btn_yes) { _, _ ->
+                resumeWebVideoPlayback()
+                startExternalVideoDownload(mediaUrl, pageTitle, pageUrl)
+            }
+            .setNegativeButton(R.string.btn_no) { _, _ ->
+                resumeWebVideoPlayback()
+            }
+            .show()
+    }
+
+    private fun startExternalVideoDownload(mediaUrl: String, pageTitle: String, pageUrl: String) {
+        val key = mediaUrl.substringBefore('#')
+        if (downloadingExternalMediaUrls.contains(key)) return
+        downloadingExternalMediaUrls.add(key)
+        Toast.makeText(this, R.string.video_download_started_mp4, Toast.LENGTH_SHORT).show()
+        val ua = currentWebUserAgent
+        val referer = pageUrl.ifBlank { currentWebUrl }
+        thread {
+            try {
+                val savedUri = OfflineVideoDownloader.downloadDirectMp4(
+                    context = applicationContext,
+                    mediaUrl = mediaUrl,
+                    pageTitle = pageTitle,
+                    referer = referer,
+                    userAgent = ua
+                )
+                runOnUiThread {
+                    downloadingExternalMediaUrls.remove(key)
+                    if (!isFinishing) {
+                        showVideoDownloadedDialog(savedUri)
+                    }
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    downloadingExternalMediaUrls.remove(key)
+                    if (!isFinishing) {
+                        Toast.makeText(
+                            this,
+                            getString(R.string.video_download_failed, e.message ?: ""),
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun showVideoDownloadedDialog(savedUri: Uri) {
+        pauseWebVideoPlayback()
+        AlertDialog.Builder(this)
+            .setTitle(R.string.video_downloaded_title)
+            .setMessage(R.string.video_downloaded_message)
+            .setCancelable(false)
+            .setPositiveButton(R.string.btn_watch_offline) { _, _ ->
+                switchToOfflineVideo(savedUri)
+            }
+            .setNegativeButton(R.string.btn_continue_watching) { _, _ ->
+                resumeWebVideoPlayback()
+            }
+            .show()
+    }
+
+    private fun switchToOfflineVideo(savedUri: Uri) {
+        val player = webView
+        if (player == null) {
+            openOfflineVideoPlayer(savedUri, 0)
+            return
+        }
+        player.evaluateJavascript(
+            "(function(){var v=document.querySelector('video');return v?Math.floor(v.currentTime*1000):0;})()"
+        ) { raw ->
+            val posMs = raw?.trim()?.toIntOrNull() ?: 0
+            openOfflineVideoPlayer(savedUri, posMs)
+        }
+    }
+
+    private fun openOfflineVideoPlayer(videoUri: Uri, startPosMs: Int) {
+        if (customView != null) hideCustomView()
+        pauseWebVideoPlayback()
+        webView?.onPause()
+        closeOfflineVideoPlayer(resumeWeb = false)
+
+        val container = rootContainer ?: run {
+            launchExternalVideoPlayer(videoUri)
+            return
+        }
+        val overlay = FrameLayout(this).apply {
+            setBackgroundColor(Color.BLACK)
+            isClickable = true
+            isFocusable = true
+        }
+        val videoView = VideoView(this)
+        val controller = MediaController(this)
+        controller.setAnchorView(videoView)
+        videoView.setMediaController(controller)
+        videoView.layoutParams = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            Gravity.CENTER
+        )
+        videoView.setOnPreparedListener { mp ->
+            if (startPosMs > 1000 && startPosMs < mp.duration) {
+                mp.seekTo(startPosMs)
+            }
+            mp.start()
+        }
+        videoView.setOnErrorListener { _, _, _ ->
+            closeOfflineVideoPlayer(resumeWeb = true)
+            launchExternalVideoPlayer(videoUri)
+            true
+        }
+
+        val density = resources.displayMetrics.density
+        val btnSize = (40 * density).toInt()
+        val margin = (14 * density).toInt()
+        val closeBg = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(Color.argb(170, 15, 23, 42))
+            setStroke((1 * density).toInt(), Color.argb(120, 255, 255, 255))
+        }
+        val closeBtn = TextView(this).apply {
+            text = "\u2715"
+            setTextColor(Color.WHITE)
+            textSize = 18f
+            gravity = Gravity.CENTER
+            background = closeBg
+            layoutParams = FrameLayout.LayoutParams(btnSize, btnSize, Gravity.TOP or Gravity.END).apply {
+                topMargin = margin
+                rightMargin = margin
+            }
+            setOnClickListener { closeOfflineVideoPlayer(resumeWeb = true) }
+        }
+
+        overlay.addView(videoView)
+        overlay.addView(closeBtn)
+        container.addView(
+            overlay,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+        offlineOverlay = overlay
+        offlineVideoView = videoView
+        videoView.setVideoURI(videoUri)
+        videoView.requestFocus()
+    }
+
+    private fun closeOfflineVideoPlayer(resumeWeb: Boolean) {
+        offlineVideoView?.stopPlayback()
+        offlineVideoView = null
+        offlineOverlay?.let { overlay ->
+            rootContainer?.removeView(overlay)
+        }
+        offlineOverlay = null
+        if (resumeWeb) {
+            webView?.onResume()
+            webView?.requestFocus()
+        }
+    }
+
+    private fun launchExternalVideoPlayer(videoUri: Uri) {
+        try {
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(videoUri, "video/mp4")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(intent)
+        } catch (_: Exception) {
+            Toast.makeText(this, R.string.video_open_error, Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun immersiveSystemUiFlags(): Int = (
@@ -869,6 +1496,10 @@ class MainActivity : Activity() {
             showSettingsDialog()
             return true
         }
+        if (keyCode == KeyEvent.KEYCODE_BACK && offlineOverlay != null) {
+            closeOfflineVideoPlayer(resumeWeb = true)
+            return true
+        }
         if (keyCode == KeyEvent.KEYCODE_BACK && customView != null) {
             hideCustomView()
             return true
@@ -878,6 +1509,7 @@ class MainActivity : Activity() {
 
     @Deprecated("Deprecated in Android")
     override fun onBackPressed() {
+        if (offlineOverlay != null) { closeOfflineVideoPlayer(resumeWeb = true); return }
         if (customView != null) { hideCustomView(); return }
         val player = webView
         if (player != null && player.canGoBack()) player.goBack() else super.onBackPressed()
@@ -889,6 +1521,9 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        videoPromptRunnable?.let { mainHandler.removeCallbacks(it) }
+        videoPromptRunnable = null
+        closeOfflineVideoPlayer(resumeWeb = false)
         updateDownloadCancelled = true
         progressDialog?.dismiss()
         progressDialog = null

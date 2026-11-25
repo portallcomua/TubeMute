@@ -50,4 +50,25 @@
     <string name="install_permission_title">Разрешите установку обновлений</string>
     <string name="install_permission_message">Один раз включите разрешение для TubeMute в настройках и вернитесь назад — установка продолжится автоматически.</string>
     <string name="btn_open_settings">Открыть настройки</string>
+    <string name="save_video_title">Сохранить видео на телефон?</string>
+    <string name="save_video_message">Сохранить это видео в сжатом качестве (360p MP4) на телефон? Вы всегда сможете удалить это видео в папке загрузок видео (Movies/TubeMute).</string>
+    <string name="save_external_video_message">Сохранить это видео (MP4) на телефон? Вы всегда сможете удалить это видео в папке загрузок видео (Movies/TubeMute).</string>
+    <string name="btn_yes">Да</string>
+    <string name="btn_no">Нет</string>
+    <string name="video_download_started">Загрузка сжатого видео (360p) в фоне...</string>
+    <string name="video_download_started_mp4">Загрузка видео (MP4) в фоне...</string>
+    <string name="video_download_failed">Не удалось сохранить это видео офлайн (%1$s).</string>
+    <string name="video_downloaded_title">Видео загружено</string>
+    <string name="video_downloaded_message">Теперь вы можете продолжить просмотр без затрат на интернет.</string>
+    <string name="btn_watch_offline">Перейти к просмотру на телефоне</string>
+    <string name="video_open_error">Не удалось открыть загруженное видео.</string>
+    <string name="settings_open_link">Открыть ссылку / сайт</string>
+    <string name="settings_back_to_youtube">Вернуться на YouTube</string>
+    <string name="open_link_title">Открыть ссылку / сайт</string>
+    <string name="open_link_message">Вставьте ссылку на видео или адрес сайта (например, Facebook или другой сайт с видео).</string>
+    <string name="open_link_hint">https://...</string>
+    <string name="btn_open">Открыть</string>
+    <string name="btn_open_youtube">YouTube</string>
+    <string name="err_invalid_url">Введите правильную ссылку на сайт (https://...).</string>
+    <string name="btn_url_short">URL</string>
 </resources>

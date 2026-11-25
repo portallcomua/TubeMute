@@ -50,4 +50,25 @@
     <string name="install_permission_title">Дозвольте встановлення оновлень</string>
     <string name="install_permission_message">Один раз увімкніть дозвіл для TubeMute у налаштуваннях і поверніться назад — встановлення продовжиться автоматично.</string>
     <string name="btn_open_settings">Відкрити налаштування</string>
+    <string name="save_video_title">Зберегти відео на телефон?</string>
+    <string name="save_video_message">Зберегти це відео у стиснутій якості (360p MP4) на телефон? Ви завжди зможете видалити це відео в папці завантажень відео (Movies/TubeMute).</string>
+    <string name="save_external_video_message">Зберегти це відео (MP4) на телефон? Ви завжди зможете видалити це відео в папці завантажень відео (Movies/TubeMute).</string>
+    <string name="btn_yes">Так</string>
+    <string name="btn_no">Ні</string>
+    <string name="video_download_started">Завантаження стиснутого відео (360p) у фоні...</string>
+    <string name="video_download_started_mp4">Завантаження відео (MP4) у фоні...</string>
+    <string name="video_download_failed">Не вдалося зберегти це відео офлайн (%1$s).</string>
+    <string name="video_downloaded_title">Відео завантажене</string>
+    <string name="video_downloaded_message">Тепер ви можете продовжити перегляд без витрат на інтернет.</string>
+    <string name="btn_watch_offline">Перейти до перегляду на телефоні</string>
+    <string name="video_open_error">Не вдалося відкрити завантажене відео.</string>
+    <string name="settings_open_link">Відкрити посилання / сайт</string>
+    <string name="settings_back_to_youtube">Повернутися на YouTube</string>
+    <string name="open_link_title">Відкрити посилання / сайт</string>
+    <string name="open_link_message">Вставте посилання на відео або адресу сайту (наприклад, Facebook чи інший сайт з відео).</string>
+    <string name="open_link_hint">https://...</string>
+    <string name="btn_open">Відкрити</string>
+    <string name="btn_open_youtube">YouTube</string>
+    <string name="err_invalid_url">Введіть правильне посилання на сайт (https://...).</string>
+    <string name="btn_url_short">URL</string>
 </resources>
