@@ -17,10 +17,10 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.provider.Settings
 import android.text.InputType
 import android.view.Gravity
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.webkit.CookieManager
@@ -33,13 +33,12 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.MediaController
 import android.widget.TextView
 import android.widget.Toast
 import android.widget.VideoView
 import org.json.JSONObject
-import java.io.File
-import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Locale
@@ -56,7 +55,6 @@ class MainActivity : Activity() {
         private const val EMAIL_KEY = "user_email"
         private const val DEVICE_UUID_KEY = "device_uuid"
         private const val REQ_CHOOSE_ACCOUNT = 1001
-        private const val REQ_INSTALL_PERMISSION = 1002
         private const val GUEST_DOMAIN = "@device.tubemute.app"
 
         private val ALLOWED_WEBVIEW_HOSTS = setOf(
@@ -78,9 +76,6 @@ class MainActivity : Activity() {
     private var customViewCallback: WebChromeClient.CustomViewCallback? = null
     private var previousSystemUiVisibility = 0
     private var updateCheckedThisSession = false
-    private var pendingInstallApkPath: String? = null
-    private var pendingFallbackUrl = ""
-    private var progressDialog: AlertDialog? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private var videoPromptRunnable: Runnable? = null
     private var currentPromptedVideoId = ""
@@ -98,7 +93,6 @@ class MainActivity : Activity() {
 
     @Volatile private var requestInProgress = false
     @Volatile private var updateCheckInProgress = false
-    @Volatile private var updateDownloadCancelled = false
 
     private val deviceId: String
         get() {
@@ -115,9 +109,9 @@ class MainActivity : Activity() {
     private val appVersionName: String
         get() = try {
             @Suppress("DEPRECATION")
-            packageManager.getPackageInfo(packageName, 0).versionName ?: "2.3.0"
+            packageManager.getPackageInfo(packageName, 0).versionName ?: "2.3.2"
         } catch (_: Exception) {
-            "2.3.0"
+            "2.3.2"
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -235,16 +229,6 @@ class MainActivity : Activity() {
                 saveEmailAndCheck(pickedEmail)
             } else if (currentEmail.isBlank()) {
                 showWelcomeAccountChoice()
-            }
-        } else if (requestCode == REQ_INSTALL_PERMISSION) {
-            val apkPath = pendingInstallApkPath
-            val fallback = pendingFallbackUrl
-            pendingInstallApkPath = null
-            if (!apkPath.isNullOrBlank()) {
-                val file = File(apkPath)
-                if (file.isFile) {
-                    launchSystemInstaller(file, fallback)
-                }
             }
         }
     }
@@ -467,16 +451,12 @@ class MainActivity : Activity() {
         apkUrl: String,
         releaseUrl: String
     ) {
-        val fallbackUrl = releaseUrl.ifBlank { apkUrl }
+        val targetUrl = apkUrl.ifBlank { releaseUrl }
         AlertDialog.Builder(this)
             .setTitle(R.string.update_available_title)
             .setMessage(getString(R.string.update_available_message, remoteVersion, appVersionName))
             .setPositiveButton(R.string.btn_download_update) { _, _ ->
-                if (apkUrl.isNotBlank()) {
-                    downloadAndInstallUpdate(apkUrl, remoteVersion, fallbackUrl)
-                } else {
-                    openUrlInBrowser(fallbackUrl)
-                }
+                openUrlInBrowser(targetUrl)
             }
             .setNegativeButton(R.string.btn_later, null)
             .show()
@@ -487,192 +467,6 @@ class MainActivity : Activity() {
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
         } catch (_: Exception) {
             Toast.makeText(this, R.string.update_open_error, Toast.LENGTH_LONG).show()
-        }
-    }
-
-    private fun downloadAndInstallUpdate(
-        apkUrl: String,
-        remoteVersion: String,
-        fallbackUrl: String
-    ) {
-        updateDownloadCancelled = false
-        progressDialog?.dismiss()
-        val dialog = AlertDialog.Builder(this)
-            .setTitle(R.string.update_available_title)
-            .setMessage(R.string.downloading_update)
-            .setCancelable(false)
-            .setNegativeButton(R.string.btn_later) { _, _ ->
-                updateDownloadCancelled = true
-            }
-            .show()
-        progressDialog = dialog
-
-        thread {
-            var currentUrl = apkUrl
-            try {
-                val baseDir = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                    cacheDir
-                } else {
-                    externalCacheDir ?: cacheDir
-                }
-                val updatesDir = File(baseDir, "updates").apply { mkdirs() }
-                updatesDir.listFiles()?.forEach { old ->
-                    if (old.name.endsWith(".apk")) old.delete()
-                }
-                val safeVer = remoteVersion.replace(Regex("[^A-Za-z0-9._-]"), "_")
-                val targetFile = File(updatesDir, "TubeMute-$safeVer.apk")
-
-                var conn: HttpURLConnection? = null
-                for (hop in 0 until 6) {
-                    val nextConn = (URL(currentUrl).openConnection() as HttpURLConnection).apply {
-                        instanceFollowRedirects = false
-                        connectTimeout = 15000
-                        readTimeout = 30000
-                        setRequestProperty("User-Agent", "TubeMute-Android/$appVersionName")
-                        setRequestProperty("Accept", "application/octet-stream")
-                    }
-                    val code = nextConn.responseCode
-                    if (code in listOf(301, 302, 303, 307, 308)) {
-                        val location = nextConn.getHeaderField("Location").orEmpty()
-                        nextConn.disconnect()
-                        if (location.isBlank()) throw Exception("Redirect missing Location")
-                        currentUrl = URL(URL(currentUrl), location).toString()
-                    } else {
-                        conn = nextConn
-                        break
-                    }
-                }
-                val activeConn = conn ?: throw Exception("Too many redirects")
-                try {
-                    val code = activeConn.responseCode
-                    if (code !in 200..299) {
-                        throw Exception("HTTP $code")
-                    }
-                    val total = activeConn.contentLengthLong
-                    var downloaded = 0L
-                    var lastPercent = -1
-                    val buffer = ByteArray(16384)
-                    activeConn.inputStream.use { input ->
-                        FileOutputStream(targetFile).use { output ->
-                            while (true) {
-                                if (updateDownloadCancelled) {
-                                    throw Exception("Cancelled")
-                                }
-                                val read = input.read(buffer)
-                                if (read <= 0) break
-                                output.write(buffer, 0, read)
-                                downloaded += read
-                                if (total > 0) {
-                                    val pct = ((downloaded * 100) / total).toInt().coerceIn(0, 100)
-                                    if (pct != lastPercent) {
-                                        lastPercent = pct
-                                        runOnUiThread {
-                                            progressDialog?.setMessage(
-                                                getString(
-                                                    R.string.downloading_update_progress,
-                                                    remoteVersion,
-                                                    pct
-                                                )
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    if (targetFile.length() < 100_000L) {
-                        targetFile.delete()
-                        throw Exception("Invalid APK file")
-                    }
-                } finally {
-                    activeConn.disconnect()
-                }
-
-                runOnUiThread {
-                    progressDialog?.dismiss()
-                    progressDialog = null
-                    if (!updateDownloadCancelled) {
-                        installDownloadedApk(targetFile, fallbackUrl)
-                    }
-                }
-            } catch (e: Exception) {
-                runOnUiThread {
-                    progressDialog?.dismiss()
-                    progressDialog = null
-                    if (!updateDownloadCancelled) {
-                        Toast.makeText(
-                            this,
-                            getString(R.string.update_download_failed, e.message ?: ""),
-                            Toast.LENGTH_LONG
-                        ).show()
-                        if (fallbackUrl.isNotBlank()) {
-                            openUrlInBrowser(fallbackUrl)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private fun installDownloadedApk(file: File, fallbackUrl: String) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
-            pendingInstallApkPath = file.absolutePath
-            pendingFallbackUrl = fallbackUrl
-            AlertDialog.Builder(this)
-                .setTitle(R.string.install_permission_title)
-                .setMessage(R.string.install_permission_message)
-                .setPositiveButton(R.string.btn_open_settings) { _, _ ->
-                    try {
-                        val settingsIntent = Intent(
-                            Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                            Uri.parse("package:$packageName")
-                        )
-                        @Suppress("DEPRECATION")
-                        startActivityForResult(settingsIntent, REQ_INSTALL_PERMISSION)
-                    } catch (_: Exception) {
-                        pendingInstallApkPath = null
-                        launchSystemInstaller(file, fallbackUrl)
-                    }
-                }
-                .setNegativeButton(R.string.btn_later) { _, _ ->
-                    pendingInstallApkPath = null
-                }
-                .show()
-            return
-        }
-        launchSystemInstaller(file, fallbackUrl)
-    }
-
-    private fun launchSystemInstaller(file: File, fallbackUrl: String) {
-        val apkUri: Uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            Uri.parse("content://$packageName.updateprovider/updates/${file.name}")
-        } else {
-            file.setReadable(true, false)
-            Uri.fromFile(file)
-        }
-        val viewIntent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(apkUri, "application/vnd.android.package-archive")
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        try {
-            startActivity(viewIntent)
-            return
-        } catch (_: Exception) {
-        }
-        @Suppress("DEPRECATION")
-        val installIntent = Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
-            data = apkUri
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-            putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
-        }
-        try {
-            startActivity(installIntent)
-        } catch (_: Exception) {
-            if (fallbackUrl.isNotBlank()) {
-                openUrlInBrowser(fallbackUrl)
-            } else {
-                Toast.makeText(this, R.string.update_open_error, Toast.LENGTH_LONG).show()
-            }
         }
     }
 
@@ -692,7 +486,7 @@ class MainActivity : Activity() {
         entries.add(getString(R.string.settings_check_updates) to { checkForUpdates(manual = true) })
         entries.add(getString(R.string.settings_choose_device_account) to { launchAccountPicker() })
         entries.add(getString(R.string.settings_enter_email) to { showRegistrationDialog() })
-        entries.add(getString(R.string.btn_pay) to { openPayment() })
+        entries.add(getString(R.string.settings_pro_info) to { showProInfoDialog() })
 
         val labels = entries.map { it.first }.toTypedArray()
         val info = getString(
@@ -706,6 +500,17 @@ class MainActivity : Activity() {
             .setItems(labels) { _, which ->
                 entries.getOrNull(which)?.second?.invoke()
             }
+            .setNegativeButton(R.string.btn_close, null)
+            .show()
+    }
+
+    private fun showProInfoDialog() {
+        val statusText = currentAccessSummary.ifBlank { "-" }
+        val message = getString(R.string.pro_info_message, displayEmail(), statusText)
+        AlertDialog.Builder(this)
+            .setTitle(R.string.pro_info_title)
+            .setMessage(message)
+            .setPositiveButton(R.string.btn_go_to_payment) { _, _ -> openPayment() }
             .setNegativeButton(R.string.btn_close, null)
             .show()
     }
@@ -777,7 +582,7 @@ class MainActivity : Activity() {
             .setTitle(R.string.trial_reminder_title)
             .setMessage(getString(R.string.trial_reminder_message, days))
             .setCancelable(false)
-            .setPositiveButton(R.string.btn_pay) { _, _ -> openPayment() }
+            .setPositiveButton(R.string.btn_pay) { _, _ -> showProInfoDialog() }
             .setNeutralButton(R.string.btn_continue_watching) { _, _ ->
                 if (webView == null) initYouTubePlayer()
                 triggerAutoUpdateCheckOnce()
@@ -892,32 +697,111 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun createOpenLinkOverlayButton(): TextView {
-        val density = resources.displayMetrics.density
-        val sizePx = (40 * density).toInt()
-        val marginPx = (12 * density).toInt()
-        val gapPx = (8 * density).toInt()
-        val bg = GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
-            setColor(Color.argb(150, 15, 23, 42))
-            setStroke((1 * density).toInt(), Color.argb(90, 255, 255, 255))
+    @SuppressLint("ClickableViewAccessibility")
+    private fun attachDragOrClick(target: View, bar: View, parent: FrameLayout, onClick: () -> Unit) {
+        val slop = 8f * resources.displayMetrics.density
+        var downRawX = 0f
+        var downRawY = 0f
+        var startX = 0f
+        var startY = 0f
+        var dragging = false
+        target.setOnTouchListener { v, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    downRawX = event.rawX
+                    downRawY = event.rawY
+                    startX = bar.x
+                    startY = bar.y
+                    dragging = false
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = event.rawX - downRawX
+                    val dy = event.rawY - downRawY
+                    if (!dragging && kotlin.math.hypot(dx.toDouble(), dy.toDouble()) > slop) {
+                        dragging = true
+                    }
+                    if (dragging) {
+                        val maxX = (parent.width - bar.width).coerceAtLeast(0).toFloat()
+                        val maxY = (parent.height - bar.height).coerceAtLeast(0).toFloat()
+                        bar.x = (startX + dx).coerceIn(0f, maxX)
+                        bar.y = (startY + dy).coerceIn(0f, maxY)
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    if (!dragging) {
+                        v.performClick()
+                        onClick()
+                    }
+                    true
+                }
+                else -> false
+            }
         }
-        return TextView(this).apply {
+    }
+
+    private fun createSmartphoneControlsBar(parent: FrameLayout): LinearLayout {
+        val density = resources.displayMetrics.density
+        val btnSizePx = (34 * density).toInt()
+        val padPx = (4 * density).toInt()
+        val leftMarginPx = (10 * density).toInt()
+        val bottomMarginPx = (72 * density).toInt()
+
+        val barBg = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = (20 * density)
+            setColor(Color.argb(175, 15, 23, 42))
+            setStroke((1 * density).toInt(), Color.argb(95, 255, 255, 255))
+        }
+        val bar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = barBg
+            alpha = 0.85f
+            setPadding(padPx, padPx, padPx, padPx)
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM or Gravity.START
+            ).apply {
+                leftMargin = leftMarginPx
+                bottomMargin = bottomMarginPx
+            }
+        }
+
+        val urlBtn = TextView(this).apply {
             text = getString(R.string.btn_url_short)
             setTextColor(Color.WHITE)
             textSize = 11f
             setTypeface(null, Typeface.BOLD)
             gravity = Gravity.CENTER
-            background = bg
-            isFocusable = true
-            isFocusableInTouchMode = true
             contentDescription = getString(R.string.open_link_title)
-            layoutParams = FrameLayout.LayoutParams(sizePx, sizePx, Gravity.TOP or Gravity.END).apply {
-                topMargin = marginPx
-                rightMargin = marginPx + sizePx + gapPx
-            }
-            setOnClickListener { showOpenLinkDialog() }
+            layoutParams = LinearLayout.LayoutParams(btnSizePx, btnSizePx)
         }
+        val divider = View(this).apply {
+            setBackgroundColor(Color.argb(70, 255, 255, 255))
+            layoutParams = LinearLayout.LayoutParams((1 * density).toInt(), (18 * density).toInt()).apply {
+                leftMargin = (2 * density).toInt()
+                rightMargin = (2 * density).toInt()
+            }
+        }
+        val settingsBtn = TextView(this).apply {
+            text = "\u2699"
+            setTextColor(Color.WHITE)
+            textSize = 16f
+            gravity = Gravity.CENTER
+            contentDescription = getString(R.string.settings_title)
+            layoutParams = LinearLayout.LayoutParams(btnSizePx, btnSizePx)
+        }
+
+        attachDragOrClick(urlBtn, bar, parent) { showOpenLinkDialog() }
+        attachDragOrClick(settingsBtn, bar, parent) { showSettingsDialog() }
+
+        bar.addView(urlBtn)
+        bar.addView(divider)
+        bar.addView(settingsBtn)
+        return bar
     }
 
     @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
@@ -937,9 +821,10 @@ class MainActivity : Activity() {
             )
         )
         if (isSmartphoneDevice()) {
-            container.addView(createOpenLinkOverlayButton())
+            container.addView(createSmartphoneControlsBar(container))
+        } else {
+            container.addView(createSettingsOverlayButton())
         }
-        container.addView(createSettingsOverlayButton())
         setContentView(container)
 
         player.isFocusable = true
@@ -1524,9 +1409,6 @@ class MainActivity : Activity() {
         videoPromptRunnable?.let { mainHandler.removeCallbacks(it) }
         videoPromptRunnable = null
         closeOfflineVideoPlayer(resumeWeb = false)
-        updateDownloadCancelled = true
-        progressDialog?.dismiss()
-        progressDialog = null
         customViewCallback?.onCustomViewHidden()
         customViewCallback = null
         customView = null

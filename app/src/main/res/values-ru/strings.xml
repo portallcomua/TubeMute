@@ -71,4 +71,8 @@
     <string name="btn_open_youtube">YouTube</string>
     <string name="err_invalid_url">Введите правильную ссылку на сайт (https://...).</string>
     <string name="btn_url_short">URL</string>
+    <string name="settings_pro_info">Купить PRO / О преимуществах</string>
+    <string name="pro_info_title">TubeMute PRO</string>
+    <string name="pro_info_message">Аккаунт: %1$s\nСтатус: %2$s\n\nЧто даёт TubeMute PRO:\n• Просмотр YouTube без навязчивой рекламы на TV и смартфоне\n• Сохранение видео (MP4) на телефон для просмотра без интернета\n• Доступ для ваших устройств на этом email\n\nНажмите «Перейти к оплате» и укажите этот же email при оплате — PRO активируется автоматически.</string>
+    <string name="btn_go_to_payment">Перейти к оплате</string>
 </resources>

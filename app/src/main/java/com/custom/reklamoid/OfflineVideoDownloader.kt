@@ -1,10 +1,7 @@
 package com.custom.reklamoid
 
-import android.Manifest
 import android.content.ContentValues
 import android.content.Context
-import android.content.pm.PackageManager
-import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -324,15 +321,7 @@ object OfflineVideoDownloader {
                     throw e
                 }
             } else {
-                val canWritePublic = Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
-                    context.checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) ==
-                    PackageManager.PERMISSION_GRANTED
-                val dir = if (canWritePublic) {
-                    @Suppress("DEPRECATION")
-                    File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), "TubeMute")
-                } else {
-                    File(context.getExternalFilesDir(Environment.DIRECTORY_MOVIES) ?: context.filesDir, "TubeMute")
-                }
+                val dir = File(context.getExternalFilesDir(Environment.DIRECTORY_MOVIES) ?: context.filesDir, "TubeMute")
                 dir.mkdirs()
                 val outFile = File(dir, fileName)
                 var totalBytes = 0L
@@ -350,14 +339,6 @@ object OfflineVideoDownloader {
                     }
                     if (totalBytes < 30_000L) {
                         throw Exception("Empty or incomplete video stream")
-                    }
-                    if (canWritePublic) {
-                        MediaScannerConnection.scanFile(
-                            context,
-                            arrayOf(outFile.absolutePath),
-                            arrayOf("video/mp4"),
-                            null
-                        )
                     }
                     return Uri.fromFile(outFile)
                 } catch (e: Exception) {
