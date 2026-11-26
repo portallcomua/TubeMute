@@ -78,4 +78,6 @@
     <string name="btn_go_to_payment">Перейти до оплати</string>
     <string name="settings_reset_youtube_session">Скинути вхід YouTube (якщо зависла перевірка)</string>
     <string name="youtube_session_reset_done">Сесію YouTube очищено. Перезавантажуємо...</string>
+    <string name="tv_settings_badge">⚙ Налаштування (утрим. Назад)</string>
+    <string name="tv_back_menu_message">Відкрити налаштування TubeMute чи вийти з додатку?</string>
 </resources>

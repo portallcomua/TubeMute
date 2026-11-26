@@ -78,4 +78,6 @@
     <string name="btn_go_to_payment">Go to payment</string>
     <string name="settings_reset_youtube_session">Reset YouTube sign-in (if stuck)</string>
     <string name="youtube_session_reset_done">YouTube session cleared. Reloading...</string>
+    <string name="tv_settings_badge">⚙ Settings (hold Back)</string>
+    <string name="tv_back_menu_message">Open TubeMute settings or exit the app?</string>
 </resources>

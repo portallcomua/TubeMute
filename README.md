@@ -1,6 +1,15 @@
-# TubeMute 2.4.1
+# TubeMute 2.4.2
 
 TubeMute is an Android TV / Google TV / Android application with server-managed access, GitHub Releases updates, ad-free YouTube & external video browsing on smartphones, and offline MP4 saving.
+
+## What's New in 2.4.2
+
+- **Simple TV Remote Settings Access (`2.4.2` / `versionCode 35`)**:
+  - Hold **Back** anywhere on Android TV (~0.65s) or press **Back** at the home screen to open **TubeMute Settings** on any minimal TV remote (plus Menu / Info / Guide / Blue / Yellow keys).
+  - Updated top-right TV badge to `⚙ Налаштування (утрим. Назад)`.
+- **Zero-Flash YouTube Ad Stripping**:
+  - Fixed XHR listener registration order (`open()` instead of `send()`) and wrapped `Response.prototype.json`/`.text` so `/youtubei/v1/player` and `/next` ad fields are stripped even when `window.fetch` was cached early.
+  - Added `MutationObserver` + opacity hiding during `.ad-showing` fallback to prevent pre-roll frame flashes.
 
 ## What's New in 2.4.1
 

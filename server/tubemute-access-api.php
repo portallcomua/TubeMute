@@ -2,13 +2,13 @@
 /**
  * Plugin Name: TubeMute
  * Description: Central user, trial, device and PRO access management for TubeMute Android.
- * Version: 2.4.1
+ * Version: 2.4.2
  * Author: UA Server
  */
 if (!defined('ABSPATH')) { exit; }
 
 final class TubeMute {
-    const VERSION = '2.4.1';
+    const VERSION = '2.4.2';
     const DB_VERSION = '2';
     const GITHUB_REPO = 'portallcomua/TubeMute';
     const UPDATE_CACHE = 'tubemute_gh_release_cache';

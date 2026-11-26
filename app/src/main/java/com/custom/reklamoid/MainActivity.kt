@@ -150,6 +150,8 @@ class MainActivity : Activity() {
     private var offlineOverlay: FrameLayout? = null
     private var offlineVideoView: VideoView? = null
     private var transparentVideoPoster: Bitmap? = null
+    private var tvBackLongPressRunnable: Runnable? = null
+    private var tvBackLongPressTriggered = false
 
     @Volatile private var requestInProgress = false
     @Volatile private var updateCheckInProgress = false
@@ -169,9 +171,9 @@ class MainActivity : Activity() {
     private val appVersionName: String
         get() = try {
             @Suppress("DEPRECATION")
-            packageManager.getPackageInfo(packageName, 0).versionName ?: "2.4.1"
+            packageManager.getPackageInfo(packageName, 0).versionName ?: "2.4.2"
         } catch (_: Exception) {
-            "2.4.1"
+            "2.4.2"
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -826,23 +828,32 @@ class MainActivity : Activity() {
 
     private fun createSettingsOverlayButton(): TextView {
         val density = resources.displayMetrics.density
-        val sizePx = (40 * density).toInt()
+        val padH = (12 * density).toInt()
+        val padV = (6 * density).toInt()
         val marginPx = (12 * density).toInt()
         val bg = GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
-            setColor(Color.argb(150, 15, 23, 42))
-            setStroke((1 * density).toInt(), Color.argb(90, 255, 255, 255))
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = 18 * density
+            setColor(Color.argb(170, 15, 23, 42))
+            setStroke((1 * density).toInt(), Color.argb(105, 255, 255, 255))
         }
         return TextView(this).apply {
-            text = "\u2699"
+            text = getString(R.string.tv_settings_badge)
             setTextColor(Color.WHITE)
-            textSize = 18f
+            textSize = 11f
+            setTypeface(null, Typeface.BOLD)
             gravity = Gravity.CENTER
             background = bg
+            alpha = 0.85f
+            setPadding(padH, padV, padH, padV)
             isFocusable = true
             isFocusableInTouchMode = true
             contentDescription = getString(R.string.settings_title)
-            layoutParams = FrameLayout.LayoutParams(sizePx, sizePx, Gravity.TOP or Gravity.END).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP or Gravity.END
+            ).apply {
                 topMargin = marginPx
                 rightMargin = marginPx
             }
@@ -1265,6 +1276,37 @@ class MainActivity : Activity() {
               stripAdKeys(window.ytInitialPlayerResponse);
               if (!window.__tmYtNetHook) {
                 window.__tmYtNetHook = true;
+                if (typeof Response !== 'undefined' && Response.prototype) {
+                  var origRespJson = Response.prototype.json;
+                  var origRespText = Response.prototype.text;
+                  if (typeof origRespJson === 'function') {
+                    Response.prototype.json = function() {
+                      var u = (this && this.url) ? String(this.url) : '';
+                      return origRespJson.apply(this, arguments).then(function(data) {
+                        if (u.indexOf('/youtubei/v1/player') !== -1 || u.indexOf('/youtubei/v1/next') !== -1) {
+                          stripAdKeys(data);
+                        }
+                        return data;
+                      });
+                    };
+                  }
+                  if (typeof origRespText === 'function') {
+                    Response.prototype.text = function() {
+                      var u = (this && this.url) ? String(this.url) : '';
+                      return origRespText.apply(this, arguments).then(function(txt) {
+                        if ((u.indexOf('/youtubei/v1/player') !== -1 || u.indexOf('/youtubei/v1/next') !== -1) &&
+                            txt && (txt.indexOf('adPlacements') !== -1 || txt.indexOf('playerAds') !== -1 || txt.indexOf('adSlots') !== -1)) {
+                          try {
+                            var data = JSON.parse(txt);
+                            stripAdKeys(data);
+                            return JSON.stringify(data);
+                          } catch (e) {}
+                        }
+                        return txt;
+                      });
+                    };
+                  }
+                }
                 if (typeof window.fetch === 'function') {
                   var origFetch = window.fetch.bind(window);
                   window.fetch = function(input, init) {
@@ -1277,46 +1319,20 @@ class MainActivity : Activity() {
                         headers: { 'Content-Type': 'application/json' }
                       }));
                     }
-                    var p = origFetch(input, init);
-                    if (reqUrl.indexOf('/youtubei/v1/player') !== -1 || reqUrl.indexOf('/youtubei/v1/next') !== -1) {
-                      return p.then(function(resp) {
-                        if (!resp || !resp.ok) return resp;
-                        return resp.clone().text().then(function(txt) {
-                          try {
-                            if (txt.indexOf('adPlacements') === -1 && txt.indexOf('playerAds') === -1 && txt.indexOf('adSlots') === -1) {
-                              return resp;
-                            }
-                            var data = JSON.parse(txt);
-                            stripAdKeys(data);
-                            var headers = new Headers(resp.headers);
-                            headers.delete('content-length');
-                            return new Response(JSON.stringify(data), {
-                              status: resp.status,
-                              statusText: resp.statusText,
-                              headers: headers
-                            });
-                          } catch (e) {
-                            return resp;
-                          }
-                        }).catch(function() { return resp; });
-                      });
-                    }
-                    return p;
+                    return origFetch(input, init);
                   };
                 }
                 if (typeof XMLHttpRequest !== 'undefined' && XMLHttpRequest.prototype) {
                   var origOpen = XMLHttpRequest.prototype.open;
-                  var origSend = XMLHttpRequest.prototype.send;
                   XMLHttpRequest.prototype.open = function(method, url) {
-                    this.__tmUrl = typeof url === 'string' ? url : String(url || '');
-                    return origOpen.apply(this, arguments);
-                  };
-                  XMLHttpRequest.prototype.send = function() {
                     var xhr = this;
-                    var u = xhr.__tmUrl || '';
-                    if (u.indexOf('/youtubei/v1/player') !== -1 || u.indexOf('/youtubei/v1/next') !== -1) {
+                    xhr.__tmUrl = typeof url === 'string' ? url : String(url || '');
+                    if (!xhr.__tmBound) {
+                      xhr.__tmBound = true;
                       xhr.addEventListener('readystatechange', function() {
-                        if (xhr.readyState === 4 && xhr.status >= 200 && xhr.status < 300) {
+                        var u = xhr.__tmUrl || '';
+                        if (xhr.readyState === 4 && xhr.status >= 200 && xhr.status < 300 &&
+                            (u.indexOf('/youtubei/v1/player') !== -1 || u.indexOf('/youtubei/v1/next') !== -1)) {
                           try {
                             if (xhr.responseType === '' || xhr.responseType === 'text') {
                               var txt = xhr.responseText;
@@ -1334,7 +1350,7 @@ class MainActivity : Activity() {
                         }
                       });
                     }
-                    return origSend.apply(this, arguments);
+                    return origOpen.apply(this, arguments);
                   };
                 }
               }
@@ -1357,13 +1373,12 @@ class MainActivity : Activity() {
                   '.ytp-ad-player-overlay',
                   '.ytp-ad-text-overlay',
                   '.ytp-ad-banner-host'
-                ].join(',') + '{display:none!important;height:0!important;opacity:0!important;pointer-events:none!important;}';
+                ].join(',') + '{display:none!important;height:0!important;opacity:0!important;pointer-events:none!important;}' +
+                '.html5-video-player.ad-showing video,.html5-video-player.ad-interrupting video{opacity:0!important;}';
                 (document.head || document.documentElement).appendChild(st);
               }
-              if (window.__tmYtAdGuard) return;
-              window.__tmYtAdGuard = true;
               var isTv = ${if (isTv) "true" else "false"};
-              setInterval(function() {
+              function runAdGuardTick() {
                 stripAdKeys(window.ytInitialPlayerResponse);
                 var skipBtns = document.querySelectorAll('.ytp-skip-ad-button,.ytp-ad-skip-button,.ytp-ad-skip-button-modern,.ytp-ad-survey-answer-button,button[class*="skip-ad"],ytlr-skip-button-renderer button,ytlr-skip-button-renderer');
                 for (var i = 0; i < skipBtns.length; i++) {
@@ -1380,7 +1395,7 @@ class MainActivity : Activity() {
                   if (v.duration && isFinite(v.duration) && v.duration > 0.5 && v.buffered && v.buffered.length > 0) {
                     var bufEnd = v.buffered.end(v.buffered.length - 1);
                     var target = Math.min(v.duration - 0.05, bufEnd - 0.05);
-                    if (target > v.currentTime + 0.5) {
+                    if (target > v.currentTime + 0.35) {
                       try { v.currentTime = target; } catch (e) {}
                     }
                   }
@@ -1396,7 +1411,21 @@ class MainActivity : Activity() {
                   var origRate = parseFloat(v.dataset.tmOrigRate || '1');
                   try { v.playbackRate = (isFinite(origRate) && origRate > 0) ? origRate : 1; } catch (e) {}
                 }
-              }, 300);
+              }
+              if (!window.__tmYtAdGuard) {
+                window.__tmYtAdGuard = true;
+                if (typeof MutationObserver !== 'undefined' && document.documentElement) {
+                  new MutationObserver(function() {
+                    runAdGuardTick();
+                  }).observe(document.documentElement, {
+                    subtree: true,
+                    attributes: true,
+                    attributeFilter: ['class']
+                  });
+                }
+                setInterval(runAdGuardTick, 120);
+              }
+              runAdGuardTick();
             })();
         """.trimIndent()
         player.evaluateJavascript(js, null)
@@ -1772,8 +1801,56 @@ class MainActivity : Activity() {
         webView?.requestFocus()
     }
 
+    private fun showTvBackMenuDialog() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.app_name)
+            .setMessage(R.string.tv_back_menu_message)
+            .setPositiveButton(R.string.settings_title) { _, _ -> showSettingsDialog() }
+            .setNeutralButton(R.string.btn_continue_watching, null)
+            .setNegativeButton(R.string.btn_exit) { _, _ -> finish() }
+            .show()
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent?): Boolean {
+        if (event != null && !isSmartphoneDevice() && event.keyCode == KeyEvent.KEYCODE_BACK) {
+            when (event.action) {
+                KeyEvent.ACTION_DOWN -> {
+                    if (event.repeatCount == 0 && offlineOverlay == null && customView == null) {
+                        tvBackLongPressTriggered = false
+                        tvBackLongPressRunnable?.let { mainHandler.removeCallbacks(it) }
+                        val runnable = Runnable {
+                            if (!isFinishing) {
+                                tvBackLongPressTriggered = true
+                                showSettingsDialog()
+                            }
+                        }
+                        tvBackLongPressRunnable = runnable
+                        mainHandler.postDelayed(runnable, 650L)
+                    }
+                    if (tvBackLongPressTriggered) return true
+                }
+                KeyEvent.ACTION_UP -> {
+                    tvBackLongPressRunnable?.let { mainHandler.removeCallbacks(it) }
+                    tvBackLongPressRunnable = null
+                    if (tvBackLongPressTriggered) {
+                        tvBackLongPressTriggered = false
+                        return true
+                    }
+                }
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        if (keyCode == KeyEvent.KEYCODE_MENU || keyCode == KeyEvent.KEYCODE_SETTINGS) {
+        if (keyCode == KeyEvent.KEYCODE_MENU ||
+            keyCode == KeyEvent.KEYCODE_SETTINGS ||
+            keyCode == KeyEvent.KEYCODE_INFO ||
+            keyCode == KeyEvent.KEYCODE_GUIDE ||
+            keyCode == KeyEvent.KEYCODE_MEDIA_TOP_MENU ||
+            keyCode == KeyEvent.KEYCODE_PROG_YELLOW ||
+            keyCode == KeyEvent.KEYCODE_PROG_BLUE
+        ) {
             showSettingsDialog()
             return true
         }
@@ -1793,7 +1870,13 @@ class MainActivity : Activity() {
         if (offlineOverlay != null) { closeOfflineVideoPlayer(resumeWeb = true); return }
         if (customView != null) { hideCustomView(); return }
         val player = webView
-        if (player != null && player.canGoBack()) player.goBack() else super.onBackPressed()
+        if (player != null && player.canGoBack()) {
+            player.goBack()
+        } else if (!isSmartphoneDevice()) {
+            showTvBackMenuDialog()
+        } else {
+            super.onBackPressed()
+        }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -1864,6 +1947,8 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        tvBackLongPressRunnable?.let { mainHandler.removeCallbacks(it) }
+        tvBackLongPressRunnable = null
         videoPromptRunnable?.let { mainHandler.removeCallbacks(it) }
         videoPromptRunnable = null
         closeOfflineVideoPlayer(resumeWeb = false)
