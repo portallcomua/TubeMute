@@ -1,17 +1,24 @@
-# TubeMute 2.3.3
+# TubeMute 2.4.1
 
-TubeMute is an Android TV / Google TV / Android application with server-managed access, GitHub Releases updates, in-app link/website browsing on smartphones, and offline MP4 saving.
+TubeMute is an Android TV / Google TV / Android application with server-managed access, GitHub Releases updates, ad-free YouTube & external video browsing on smartphones, and offline MP4 saving.
 
-## What's New in 2.3.3
+## What's New in 2.4.1
 
-- **WordPress Plugin GitHub Updater & Whitelist (`server/tubemute-access-api.php` `2.3.3`)**:
-  - Added WordPress native GitHub Releases update integration (`Plugins` page **"Перевірити оновлення"** / 1-click update via `tubemute-wp-plugin.zip`, plus status & download buttons directly inside `TubeMute` admin).
-  - Added **«Білий список email (довічний PRO)»** in plugin Settings so whitelisted emails always receive `LIFETIME` PRO access.
-  - Protected `lifetime = 1` accounts from being overwritten by UA Pay Box sync.
-- **GitHub Actions Release Packaging (`.github/workflows/build.yml`)**:
-  - Automatically packages `tubemute-wp-plugin.zip` (`tubemute-access-api/tubemute-access-api.php`) alongside `TubeMute-<version>.apk` on every release tag.
-- **Clearer License Account Labels (`2.3.3` / `versionCode 29`)**:
-  - Clarified *"Акаунт ліцензії TubeMute (Google)"* / *"Інший email для ліцензії TubeMute"* in Settings so users don't confuse TubeMute license sign-in with YouTube web login.
-- **Included from 2.3.2 / 2.3.1 / 2.3.0**:
-  - Standard `INTERNET`-only manifest permission (Play Protect safe).
-  - Draggable smartphone **URL | ⚙** bar at bottom-left, **TubeMute PRO** info dialog, in-app **Open link / site** browser, and offline MP4 saving (`Movies/TubeMute`).
+- **Android TV Banner, Clean Poster & TV Ad Stripper (`2.4.1` / `versionCode 34`)**:
+  - Replaced blank TV launcher banner (`tv_banner.png`) with the branded TubeMute 320x180 banner.
+  - Added transparent `WebChromeClient.getDefaultVideoPoster()` so the full-screen sideways play-triangle no longer flashes before video playback.
+  - Intercepts YouTube `fetch` and `XMLHttpRequest` player/next JSON responses to strip `adPlacements`, `playerAds`, `adSlots`, and `/ad_break` before ads start, and limits TV fallback playbackRate/seek to buffered ranges so hardware decoders never stall on a gray screen.
+
+## What's New in 2.4.0
+
+- **YouTube & External Site Ad/Popunder Blocker (`2.4.0` / `versionCode 33`)**:
+  - Blocks YouTube ad endpoints (`/pagead/`, `/api/stats/ads`, `/ptracking`, `/get_midroll_info`, `doubleclick.net`, `googlesyndication.com`) and injects an automatic YouTube pre-roll/mid-roll ad skipper & cosmetic ad-hider.
+  - Blocks casino/betting (`777`, popunders, ad trackers) requests, `window.open` popups, and unprompted cross-site redirects on external websites, keeping playback strictly inside TubeMute.
+- **Website MP4 Download & Cross-Origin Iframe Detection**:
+  - Added `WebView.setDownloadListener` so site "Download" buttons trigger offline MP4 saving into `Movies/TubeMute`.
+  - Triggers the smartphone MP4 save prompt directly when progressive `.mp4` streams are detected inside cross-origin embedded players (`<iframe>`).
+- **PRO Price in App & WordPress Plugin (`2.4.0`)**:
+  - Added **«Вартість PRO (текст для додатку)»** in WordPress Settings, returned in `/wp-json/tubemute/v1/check` as `price_text`, and displayed inside the in-app **TubeMute PRO** dialog.
+  - Prioritized 1-tap **Device Google Account** option on first launch.
+- **Includes all `2.3.x` improvements**:
+  - Google 2FA domain & `onPause` fix, **«Скинути вхід YouTube»**, WP plugin GitHub auto-updater (`tubemute-wp-plugin.zip`), **«Білий список email (довічний PRO)»**, and user Delete / End Trial controls.

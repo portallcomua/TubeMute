@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -29,6 +30,7 @@ import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
+import android.webkit.WebStorage
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.EditText
@@ -39,6 +41,7 @@ import android.widget.TextView
 import android.widget.Toast
 import android.widget.VideoView
 import org.json.JSONObject
+import java.io.ByteArrayInputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Locale
@@ -57,13 +60,67 @@ class MainActivity : Activity() {
         private const val REQ_CHOOSE_ACCOUNT = 1001
         private const val GUEST_DOMAIN = "@device.tubemute.app"
 
-        private val ALLOWED_WEBVIEW_HOSTS = setOf(
-            "youtube.com",
-            "www.youtube.com",
-            "m.youtube.com",
-            "youtu.be",
-            "accounts.google.com",
-            "consent.youtube.com"
+        private val BLOCKED_AD_DOMAINS = setOf(
+            "doubleclick.net",
+            "googlesyndication.com",
+            "googleadservices.com",
+            "google-analytics.com",
+            "googletagmanager.com",
+            "adservice.google.com",
+            "an.yandex.ru",
+            "adfox.ru",
+            "adriver.ru",
+            "mgid.com",
+            "marketgid.com",
+            "adskeeper.co.uk",
+            "lentainform.com",
+            "recreativ.ru",
+            "trafmag.com",
+            "teads.tv",
+            "taboola.com",
+            "outbrain.com",
+            "criteo.com",
+            "pubmatic.com",
+            "rubiconproject.com",
+            "openx.net",
+            "adnxs.com",
+            "smartadserver.com",
+            "popads.net",
+            "popcash.net",
+            "propellerads.com",
+            "exoclick.com",
+            "juicyads.com",
+            "trafficjunky.com",
+            "clickadu.com",
+            "hilltopads.net",
+            "adsterra.com",
+            "monetag.com",
+            "profitablegatecpm.com",
+            "highperformanceformat.com",
+            "directadvert.ru",
+            "traforet.com",
+            "kadam.net",
+            "bodyclick.net",
+            "adsrvr.org",
+            "bidswitch.net",
+            "casalemedia.com",
+            "exponential.com",
+            "revcontent.com",
+            "sharethrough.com",
+            "spotxchange.com",
+            "tribalfusion.com",
+            "yieldmo.com",
+            "zemanta.com",
+            "pushwoosh.com",
+            "onesignal.com",
+            "moatads.com",
+            "scorecardresearch.com",
+            "quantserve.com",
+            "hotjar.com"
+        )
+
+        private val BLOCKED_HOST_REGEX = Regex(
+            "(^|[.-])(777|casino|vulkan|vulcan|1xbet|1win|pinup|pin-up|azino|joycasino|cosmolot|favbet|parimatch|melbet|mostbet|betwinner|slotscity|vbet|ggbet|roobet|bcgame|adserver|adsystem|popunder|clickunder|teaser|tizer)([.-]|$)"
         )
     }
 
@@ -72,6 +129,8 @@ class MainActivity : Activity() {
     private var currentEmail = ""
     private var currentPaymentUrl = DEFAULT_PAYMENT_URL
     private var currentAccessSummary = ""
+    private var currentProPriceText = ""
+    private var serverPluginVersion = ""
     private var customView: View? = null
     private var customViewCallback: WebChromeClient.CustomViewCallback? = null
     private var previousSystemUiVisibility = 0
@@ -90,6 +149,7 @@ class MainActivity : Activity() {
     @Volatile private var lastSniffedPageUrl = ""
     private var offlineOverlay: FrameLayout? = null
     private var offlineVideoView: VideoView? = null
+    private var transparentVideoPoster: Bitmap? = null
 
     @Volatile private var requestInProgress = false
     @Volatile private var updateCheckInProgress = false
@@ -109,9 +169,9 @@ class MainActivity : Activity() {
     private val appVersionName: String
         get() = try {
             @Suppress("DEPRECATION")
-            packageManager.getPackageInfo(packageName, 0).versionName ?: "2.3.3"
+            packageManager.getPackageInfo(packageName, 0).versionName ?: "2.4.1"
         } catch (_: Exception) {
-            "2.3.3"
+            "2.4.1"
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -160,11 +220,11 @@ class MainActivity : Activity() {
             .setTitle(R.string.app_name)
             .setMessage(R.string.welcome_message)
             .setCancelable(false)
-            .setPositiveButton(R.string.btn_continue_without_account) { _, _ ->
-                activateGuestDeviceAccount()
-            }
-            .setNeutralButton(R.string.btn_device_account) { _, _ ->
+            .setPositiveButton(R.string.btn_device_account) { _, _ ->
                 launchAccountPicker()
+            }
+            .setNeutralButton(R.string.btn_continue_without_account) { _, _ ->
+                activateGuestDeviceAccount()
             }
             .setNegativeButton(R.string.settings_enter_email) { _, _ ->
                 showRegistrationDialog()
@@ -319,9 +379,13 @@ class MainActivity : Activity() {
                 val result = postCheck()
                 val status = result.optString("status", "unknown")
                 val payment = result.optString("payment_url", "")
+                val priceText = result.optString("price_text", "")
+                val srvVer = result.optString("plugin_version", "")
                 runOnUiThread {
                     requestInProgress = false
                     if (payment.isNotBlank()) currentPaymentUrl = payment
+                    if (priceText.isNotBlank()) currentProPriceText = priceText
+                    if (srvVer.isNotBlank()) serverPluginVersion = srvVer
                     when (status) {
                         "licensed" -> {
                             val until = result.optString("until", "PRO")
@@ -336,7 +400,7 @@ class MainActivity : Activity() {
                             if (result.optBoolean("show_reminder", false)) {
                                 showTrialReminder(days)
                             } else {
-                                Toast.makeText(this, currentAccessSummary, Toast.LENGTH_LONG).show()
+                                Toast.makeText(this, "${displayEmail()}: $currentAccessSummary", Toast.LENGTH_LONG).show()
                                 if (webView == null) initYouTubePlayer()
                                 triggerAutoUpdateCheckOnce()
                             }
@@ -486,14 +550,16 @@ class MainActivity : Activity() {
         entries.add(getString(R.string.settings_check_updates) to { checkForUpdates(manual = true) })
         entries.add(getString(R.string.settings_choose_device_account) to { launchAccountPicker() })
         entries.add(getString(R.string.settings_enter_email) to { showRegistrationDialog() })
+        entries.add(getString(R.string.settings_reset_youtube_session) to { resetYouTubeSession() })
         entries.add(getString(R.string.settings_pro_info) to { showProInfoDialog() })
 
         val labels = entries.map { it.first }.toTypedArray()
+        val srvPart = if (serverPluginVersion.isNotBlank()) " · srv $serverPluginVersion" else ""
         val info = getString(
             R.string.settings_summary,
             appVersionName,
             displayEmail(),
-            currentAccessSummary.ifBlank { "-" }
+            currentAccessSummary.ifBlank { "-" } + srvPart
         )
         AlertDialog.Builder(this)
             .setTitle("${getString(R.string.settings_title)} ($info)")
@@ -506,7 +572,8 @@ class MainActivity : Activity() {
 
     private fun showProInfoDialog() {
         val statusText = currentAccessSummary.ifBlank { "-" }
-        val message = getString(R.string.pro_info_message, displayEmail(), statusText)
+        val priceText = currentProPriceText.ifBlank { getString(R.string.pro_price_fallback) }
+        val message = getString(R.string.pro_info_message, displayEmail(), statusText, priceText)
         AlertDialog.Builder(this)
             .setTitle(R.string.pro_info_title)
             .setMessage(message)
@@ -650,23 +717,109 @@ class MainActivity : Activity() {
         return host == "youtube.com" || host.endsWith(".youtube.com") || host == "youtu.be"
     }
 
-    private fun handleNavigationUrl(uri: Uri?): Boolean {
+    private fun isInternalAuthOrYouTubeHost(rawHost: String?): Boolean {
+        val h = rawHost?.lowercase(Locale.ROOT)?.trim().orEmpty()
+        if (h.isBlank()) return false
+        if (h == "youtube.com" || h.endsWith(".youtube.com") || h == "youtu.be" ||
+            h == "youtube-nocookie.com" || h.endsWith(".youtube-nocookie.com") ||
+            h == "gstatic.com" || h.endsWith(".gstatic.com") ||
+            h == "googleapis.com" || h.endsWith(".googleapis.com") ||
+            h == "googleusercontent.com" || h.endsWith(".googleusercontent.com") ||
+            h == "ggpht.com" || h.endsWith(".ggpht.com") ||
+            h == "ytimg.com" || h.endsWith(".ytimg.com")
+        ) {
+            return true
+        }
+        return h.matches(Regex("^([a-z0-9-]+\\.)*google\\.[a-z]{2,3}(\\.[a-z]{2})?$"))
+    }
+
+    private fun isGoogleAuthUrl(rawUrl: String?): Boolean {
+        if (rawUrl.isNullOrBlank()) return false
+        val host = try {
+            Uri.parse(rawUrl).host?.lowercase(Locale.ROOT).orEmpty()
+        } catch (_: Exception) {
+            ""
+        }
+        return host.startsWith("accounts.") ||
+            host.startsWith("myaccount.") ||
+            host.startsWith("consent.") ||
+            host.startsWith("gds.")
+    }
+
+    private fun isBlockedAdOrCasinoHost(rawHost: String?): Boolean {
+        val h = rawHost?.lowercase(Locale.ROOT)?.trim().orEmpty()
+        if (h.isBlank()) return false
+        if (h.startsWith("adservice.google.")) return true
+        if (BLOCKED_AD_DOMAINS.any { h == it || h.endsWith(".$it") }) return true
+        return BLOCKED_HOST_REGEX.containsMatchIn(h)
+    }
+
+    private fun isBlockedAdUrl(rawUrl: String?): Boolean {
+        if (rawUrl.isNullOrBlank()) return false
+        val uri = try { Uri.parse(rawUrl) } catch (_: Exception) { return false }
+        val host = uri.host?.lowercase(Locale.ROOT).orEmpty()
+        if (isBlockedAdOrCasinoHost(host)) return true
+        val lower = rawUrl.lowercase(Locale.ROOT)
+        if (host == "youtube.com" || host.endsWith(".youtube.com")) {
+            return lower.contains("/pagead/") ||
+                lower.contains("/api/stats/ads") ||
+                lower.contains("/ptracking") ||
+                lower.contains("/get_midroll_info") ||
+                lower.contains("/youtubei/v1/player/ad_break") ||
+                lower.contains("adformat=") ||
+                lower.contains("ad_type=")
+        }
+        return lower.contains("/vast") ||
+            lower.contains("preroll") ||
+            lower.contains("popunder") ||
+            lower.contains("clickunder") ||
+            lower.contains("/adfox/") ||
+            lower.contains("/adserver/")
+    }
+
+    private fun registrableDomain(rawHost: String?): String {
+        val parts = rawHost?.lowercase(Locale.ROOT)?.trim()?.split('.')?.filter { it.isNotBlank() }.orEmpty()
+        return if (parts.size >= 2) "${parts[parts.size - 2]}.${parts[parts.size - 1]}" else parts.joinToString(".")
+    }
+
+    private fun isSameSiteHost(host: String, referenceUrl: String): Boolean {
+        val refHost = try {
+            Uri.parse(referenceUrl).host?.lowercase(Locale.ROOT).orEmpty()
+        } catch (_: Exception) {
+            ""
+        }
+        if (refHost.isBlank()) return false
+        return registrableDomain(host) == registrableDomain(refHost)
+    }
+
+    private fun handleNavigationUrl(uri: Uri?, hasGesture: Boolean, isMainFrame: Boolean): Boolean {
         val scheme = uri?.scheme?.lowercase(Locale.ROOT) ?: return true
         val host = uri.host?.lowercase(Locale.ROOT) ?: return true
-        if (scheme == "https" && ALLOWED_WEBVIEW_HOSTS.any { host == it || host.endsWith(".$it") }) {
+        if (isBlockedAdOrCasinoHost(host)) {
+            return true
+        }
+        if (scheme == "https" && isInternalAuthOrYouTubeHost(host)) {
+            if (isSmartphoneDevice() && customBrowsingActive && isMainFrame && !hasGesture) {
+                return true
+            }
             return false
         }
         if (isSmartphoneDevice() && customBrowsingActive) {
-            if (scheme == "https" && OfflineVideoDownloader.isSafeHttpsSyntaxAndLiteral(uri.toString())) {
-                return false
+            if (scheme != "https" || !OfflineVideoDownloader.isSafeHttpsSyntaxAndLiteral(uri.toString())) {
+                return true
             }
-            return true
-        }
-        if (scheme == "https" || scheme == "http") {
-            try {
-                startActivity(Intent(Intent.ACTION_VIEW, uri))
-            } catch (_: Exception) {
+            val sameSite = isSameSiteHost(host, currentWebUrl)
+            if (isMainFrame && !sameSite) {
+                if (!hasGesture) return true
+                val lower = uri.toString().lowercase(Locale.ROOT)
+                if (lower.contains("/click") || lower.contains("/go/") || lower.contains("/out/") ||
+                    lower.contains("/away") || lower.contains("subid=") || lower.contains("click_id=") ||
+                    lower.contains("aff_id=") || lower.contains("777")
+                ) {
+                    return true
+                }
             }
+            return false
         }
         return true
     }
@@ -840,13 +993,20 @@ class MainActivity : Activity() {
         val settings: WebSettings = player.settings
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
+        settings.databaseEnabled = true
         settings.loadsImagesAutomatically = true
         settings.mediaPlaybackRequiresUserGesture = false
-        settings.javaScriptCanOpenWindowsAutomatically = false
+        settings.javaScriptCanOpenWindowsAutomatically = true
         settings.setSupportMultipleWindows(false)
         settings.useWideViewPort = true
         settings.loadWithOverviewMode = true
         settings.cacheMode = WebSettings.LOAD_DEFAULT
+        val defaultUa = settings.userAgentString.orEmpty()
+        if (defaultUa.isNotBlank()) {
+            settings.userAgentString = defaultUa
+                .replace(Regex(";\\s*wv(?=\\s*[;)])"), "")
+                .replace("Version/4.0 ", "")
+        }
         currentWebUserAgent = settings.userAgentString.orEmpty()
 
         if (isSmartphoneDevice()) {
@@ -854,6 +1014,12 @@ class MainActivity : Activity() {
         }
 
         player.webChromeClient = object : WebChromeClient() {
+            override fun getDefaultVideoPoster(): Bitmap {
+                return transparentVideoPoster ?: Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888).also {
+                    it.eraseColor(Color.TRANSPARENT)
+                    transparentVideoPoster = it
+                }
+            }
             override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
                 if (view == null) return
                 if (customView != null) { callback?.onCustomViewHidden(); return }
@@ -867,32 +1033,79 @@ class MainActivity : Activity() {
             }
             override fun onHideCustomView() { hideCustomView() }
         }
+        if (isSmartphoneDevice()) {
+            player.setDownloadListener { url, _, contentDisposition, mimetype, _ ->
+                val raw = url?.trim().orEmpty()
+                if (raw.isBlank()) return@setDownloadListener
+                val safeUrl = when {
+                    raw.startsWith("https://", ignoreCase = true) -> raw
+                    raw.startsWith("http://", ignoreCase = true) -> "https://" + raw.substring(7)
+                    else -> ""
+                }
+                if (safeUrl.isBlank() || !OfflineVideoDownloader.isSafeHttpsSyntaxAndLiteral(safeUrl)) {
+                    return@setDownloadListener
+                }
+                val host = try { Uri.parse(safeUrl).host.orEmpty() } catch (_: Exception) { "" }
+                if (isBlockedAdOrCasinoHost(host) || isBlockedAdUrl(safeUrl)) {
+                    return@setDownloadListener
+                }
+                val mimeLower = mimetype?.lowercase(Locale.ROOT).orEmpty()
+                val dispLower = contentDisposition?.lowercase(Locale.ROOT).orEmpty()
+                val looksLikeVideo = mimeLower.startsWith("video/") ||
+                    isLikelyProgressiveMp4Url(safeUrl) ||
+                    dispLower.contains(".mp4") ||
+                    dispLower.contains(".m4v")
+                if (looksLikeVideo) {
+                    startExternalVideoDownload(safeUrl, player.title.orEmpty(), currentWebUrl)
+                }
+            }
+        }
         player.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) request?.url else null
-                return handleNavigationUrl(uri)
+                val hasGesture = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) request?.hasGesture() ?: true else true
+                val isMainFrame = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) request?.isForMainFrame ?: true else true
+                return handleNavigationUrl(uri, hasGesture, isMainFrame)
             }
 
             @Deprecated("Deprecated in Java")
             override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
-                return handleNavigationUrl(url?.let { Uri.parse(it) })
+                return handleNavigationUrl(url?.let { Uri.parse(it) }, hasGesture = true, isMainFrame = true)
             }
 
             override fun shouldInterceptRequest(
                 view: WebView?,
                 request: WebResourceRequest?
             ): WebResourceResponse? {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP &&
-                    isSmartphoneDevice() &&
-                    customBrowsingActive
-                ) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                     val reqUrl = request?.url?.toString().orEmpty()
-                    if (isLikelyProgressiveMp4Url(reqUrl)) {
+                    val reqHost = request?.url?.host?.lowercase(Locale.ROOT).orEmpty()
+                    if (isBlockedAdOrCasinoHost(reqHost) || isBlockedAdUrl(reqUrl)) {
+                        return WebResourceResponse(
+                            "text/plain",
+                            "utf-8",
+                            ByteArrayInputStream(ByteArray(0))
+                        )
+                    }
+                    if (isSmartphoneDevice() && customBrowsingActive && isLikelyProgressiveMp4Url(reqUrl)) {
                         lastSniffedMp4Url = reqUrl
                         lastSniffedPageUrl = currentWebUrl
+                        mainHandler.post {
+                            if (!isFinishing && webView != null) {
+                                handleExternalVideoCandidate(reqUrl, webView?.title.orEmpty(), currentWebUrl)
+                            }
+                        }
                     }
                 }
                 return null
+            }
+
+            override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+                super.onPageStarted(view, url, favicon)
+                if (isYouTubeHost(url)) {
+                    customBrowsingActive = false
+                    injectYouTubeAdGuard()
+                }
             }
 
             override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
@@ -900,8 +1113,9 @@ class MainActivity : Activity() {
                 currentWebUrl = url.orEmpty()
                 if (isYouTubeHost(url)) {
                     customBrowsingActive = false
+                    injectYouTubeAdGuard()
                     onYouTubeUrlVisited(url)
-                } else if (isSmartphoneDevice()) {
+                } else if (isSmartphoneDevice() && !isGoogleAuthUrl(url)) {
                     videoPromptRunnable?.let { mainHandler.removeCallbacks(it) }
                     videoPromptRunnable = null
                     mainHandler.postDelayed({ injectExternalVideoWatcher() }, 450L)
@@ -911,10 +1125,12 @@ class MainActivity : Activity() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
                 currentWebUrl = url.orEmpty()
+                flushWebCookies()
                 if (isYouTubeHost(url)) {
                     customBrowsingActive = false
+                    injectYouTubeAdGuard()
                     onYouTubeUrlVisited(url)
-                } else if (isSmartphoneDevice()) {
+                } else if (isSmartphoneDevice() && !isGoogleAuthUrl(url)) {
                     injectExternalVideoWatcher()
                 }
             }
@@ -1028,12 +1244,169 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun injectYouTubeAdGuard() {
+        val player = webView ?: return
+        val isTv = !isSmartphoneDevice()
+        val js = """
+            (function() {
+              function stripAdKeys(obj) {
+                if (!obj || typeof obj !== 'object') return;
+                try {
+                  delete obj.adPlacements;
+                  delete obj.playerAds;
+                  delete obj.adSlots;
+                  delete obj.adBreakHeartbeatParams;
+                  delete obj.adBreakParams;
+                  if (obj.playerResponse && typeof obj.playerResponse === 'object') {
+                    stripAdKeys(obj.playerResponse);
+                  }
+                } catch (e) {}
+              }
+              stripAdKeys(window.ytInitialPlayerResponse);
+              if (!window.__tmYtNetHook) {
+                window.__tmYtNetHook = true;
+                if (typeof window.fetch === 'function') {
+                  var origFetch = window.fetch.bind(window);
+                  window.fetch = function(input, init) {
+                    var reqUrl = (typeof input === 'string') ? input : (input && input.url ? input.url : '');
+                    if (reqUrl.indexOf('/youtubei/v1/player/ad_break') !== -1 ||
+                        reqUrl.indexOf('/get_midroll_info') !== -1 ||
+                        reqUrl.indexOf('/pagead/') !== -1) {
+                      return Promise.resolve(new Response('{}', {
+                        status: 200,
+                        headers: { 'Content-Type': 'application/json' }
+                      }));
+                    }
+                    var p = origFetch(input, init);
+                    if (reqUrl.indexOf('/youtubei/v1/player') !== -1 || reqUrl.indexOf('/youtubei/v1/next') !== -1) {
+                      return p.then(function(resp) {
+                        if (!resp || !resp.ok) return resp;
+                        return resp.clone().text().then(function(txt) {
+                          try {
+                            if (txt.indexOf('adPlacements') === -1 && txt.indexOf('playerAds') === -1 && txt.indexOf('adSlots') === -1) {
+                              return resp;
+                            }
+                            var data = JSON.parse(txt);
+                            stripAdKeys(data);
+                            var headers = new Headers(resp.headers);
+                            headers.delete('content-length');
+                            return new Response(JSON.stringify(data), {
+                              status: resp.status,
+                              statusText: resp.statusText,
+                              headers: headers
+                            });
+                          } catch (e) {
+                            return resp;
+                          }
+                        }).catch(function() { return resp; });
+                      });
+                    }
+                    return p;
+                  };
+                }
+                if (typeof XMLHttpRequest !== 'undefined' && XMLHttpRequest.prototype) {
+                  var origOpen = XMLHttpRequest.prototype.open;
+                  var origSend = XMLHttpRequest.prototype.send;
+                  XMLHttpRequest.prototype.open = function(method, url) {
+                    this.__tmUrl = typeof url === 'string' ? url : String(url || '');
+                    return origOpen.apply(this, arguments);
+                  };
+                  XMLHttpRequest.prototype.send = function() {
+                    var xhr = this;
+                    var u = xhr.__tmUrl || '';
+                    if (u.indexOf('/youtubei/v1/player') !== -1 || u.indexOf('/youtubei/v1/next') !== -1) {
+                      xhr.addEventListener('readystatechange', function() {
+                        if (xhr.readyState === 4 && xhr.status >= 200 && xhr.status < 300) {
+                          try {
+                            if (xhr.responseType === '' || xhr.responseType === 'text') {
+                              var txt = xhr.responseText;
+                              if (txt && (txt.indexOf('adPlacements') !== -1 || txt.indexOf('playerAds') !== -1 || txt.indexOf('adSlots') !== -1)) {
+                                var parsed = JSON.parse(txt);
+                                stripAdKeys(parsed);
+                                var cleaned = JSON.stringify(parsed);
+                                Object.defineProperty(xhr, 'responseText', { configurable: true, get: function() { return cleaned; } });
+                                Object.defineProperty(xhr, 'response', { configurable: true, get: function() { return cleaned; } });
+                              }
+                            } else if (xhr.responseType === 'json' && xhr.response && typeof xhr.response === 'object') {
+                              stripAdKeys(xhr.response);
+                            }
+                          } catch (e) {}
+                        }
+                      });
+                    }
+                    return origSend.apply(this, arguments);
+                  };
+                }
+              }
+              if (!document.getElementById('tm-yt-ad-css')) {
+                var st = document.createElement('style');
+                st.id = 'tm-yt-ad-css';
+                st.textContent = [
+                  'ytd-ad-slot-renderer',
+                  'ytd-display-ad-renderer',
+                  'ytd-promoted-sparkles-web-renderer',
+                  'ytd-promoted-video-renderer',
+                  'ytd-companion-slot-renderer',
+                  'ytm-promoted-sparkles-web-renderer',
+                  'ytm-companion-ad-renderer',
+                  'ytm-ad-slot-renderer',
+                  'ytm-statement-banner-renderer',
+                  'ytlr-ad-slot-renderer',
+                  '#player-ads',
+                  '.ytp-ad-overlay-container',
+                  '.ytp-ad-player-overlay',
+                  '.ytp-ad-text-overlay',
+                  '.ytp-ad-banner-host'
+                ].join(',') + '{display:none!important;height:0!important;opacity:0!important;pointer-events:none!important;}';
+                (document.head || document.documentElement).appendChild(st);
+              }
+              if (window.__tmYtAdGuard) return;
+              window.__tmYtAdGuard = true;
+              var isTv = ${if (isTv) "true" else "false"};
+              setInterval(function() {
+                stripAdKeys(window.ytInitialPlayerResponse);
+                var skipBtns = document.querySelectorAll('.ytp-skip-ad-button,.ytp-ad-skip-button,.ytp-ad-skip-button-modern,.ytp-ad-survey-answer-button,button[class*="skip-ad"],ytlr-skip-button-renderer button,ytlr-skip-button-renderer');
+                for (var i = 0; i < skipBtns.length; i++) {
+                  try { skipBtns[i].click(); } catch (e) {}
+                }
+                var adPlayer = document.querySelector('.html5-video-player.ad-showing, .html5-video-player.ad-interrupting');
+                var v = document.querySelector('video');
+                if (adPlayer && v) {
+                  if (v.dataset.tmAdActive !== '1') {
+                    v.dataset.tmAdActive = '1';
+                    v.dataset.tmOrigMuted = v.muted ? '1' : '0';
+                    v.dataset.tmOrigRate = String(v.playbackRate || 1);
+                  }
+                  if (v.duration && isFinite(v.duration) && v.duration > 0.5 && v.buffered && v.buffered.length > 0) {
+                    var bufEnd = v.buffered.end(v.buffered.length - 1);
+                    var target = Math.min(v.duration - 0.05, bufEnd - 0.05);
+                    if (target > v.currentTime + 0.5) {
+                      try { v.currentTime = target; } catch (e) {}
+                    }
+                  }
+                  if (!isTv) {
+                    v.muted = true;
+                    try { v.playbackRate = 4; } catch (e) {}
+                  } else {
+                    try { v.playbackRate = 2; } catch (e) {}
+                  }
+                } else if (v && v.dataset.tmAdActive === '1') {
+                  v.dataset.tmAdActive = '';
+                  v.muted = (v.dataset.tmOrigMuted === '1');
+                  var origRate = parseFloat(v.dataset.tmOrigRate || '1');
+                  try { v.playbackRate = (isFinite(origRate) && origRate > 0) ? origRate : 1; } catch (e) {}
+                }
+              }, 300);
+            })();
+        """.trimIndent()
+        player.evaluateJavascript(js, null)
+    }
+
     private fun isLikelyProgressiveMp4Url(url: String): Boolean {
         if (!url.startsWith("https://", ignoreCase = true)) return false
         val lower = url.lowercase(Locale.ROOT)
         if (lower.contains("youtube.com") || lower.contains("youtu.be") ||
-            lower.contains("googlevideo.com") || lower.contains("doubleclick.net") ||
-            lower.contains("googlesyndication.com")
+            lower.contains("googlevideo.com") || isBlockedAdUrl(lower)
         ) {
             return false
         }
@@ -1053,10 +1426,33 @@ class MainActivity : Activity() {
 
     private fun injectExternalVideoWatcher() {
         val player = webView ?: return
-        if (isYouTubeHost(currentWebUrl)) return
+        if (isYouTubeHost(currentWebUrl) || isGoogleAuthUrl(currentWebUrl)) return
         val js = """
             (function() {
               if (location.hostname.indexOf('youtube.') !== -1 || location.hostname === 'youtu.be') return;
+              try { window.open = function() { return null; }; } catch (e) {}
+              function cleanAds() {
+                var sels = ['ins.adsbygoogle','[id*="adfox"]','[id*="mgid"]','[class*="teaser"]','a[href*="777"]','a[href*="casino"]','a[href*="1xbet"]','a[href*="vulkan"]'];
+                for (var i = 0; i < sels.length; i++) {
+                  var list = document.querySelectorAll(sels[i]);
+                  for (var j = 0; j < list.length; j++) { list[j].style.setProperty('display', 'none', 'important'); }
+                }
+                var all = document.querySelectorAll('div,a');
+                var w = window.innerWidth || 360, h = window.innerHeight || 640;
+                for (var k = 0; k < all.length; k++) {
+                  var el = all[k];
+                  if (el.querySelector('video,iframe')) continue;
+                  var cs = window.getComputedStyle(el);
+                  if (cs.position === 'fixed' && parseInt(cs.zIndex || '0', 10) >= 500) {
+                    var r = el.getBoundingClientRect();
+                    if (r.width >= w * 0.65 && r.height >= h * 0.65) {
+                      el.style.setProperty('display', 'none', 'important');
+                    }
+                  }
+                }
+              }
+              cleanAds();
+              setTimeout(cleanAds, 1200);
               function findMetaOrFbMp4() {
                 var metas = ['meta[property="og:video:secure_url"]','meta[property="og:video:url"]','meta[property="og:video"]'];
                 for (var i = 0; i < metas.length; i++) {
@@ -1405,10 +1801,73 @@ class MainActivity : Activity() {
         if (hasFocus && customView != null) window.decorView.systemUiVisibility = immersiveSystemUiFlags()
     }
 
+    private fun flushWebCookies() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            try {
+                CookieManager.getInstance().flush()
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    private fun resetYouTubeSession() {
+        val cookieManager = CookieManager.getInstance()
+        webView?.stopLoading()
+        val finishReset = {
+            runOnUiThread {
+                if (isFinishing) return@runOnUiThread
+                try {
+                    WebStorage.getInstance().deleteAllData()
+                } catch (_: Exception) {
+                }
+                webView?.apply {
+                    clearCache(true)
+                    clearHistory()
+                    clearFormData()
+                }
+                flushWebCookies()
+                Toast.makeText(this, R.string.youtube_session_reset_done, Toast.LENGTH_SHORT).show()
+                openUrlInWebView(youtubeStartUrl(), customBrowsing = false)
+            }
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            cookieManager.removeSessionCookies {
+                cookieManager.removeAllCookies {
+                    finishReset()
+                }
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            cookieManager.removeAllCookie()
+            finishReset()
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (offlineOverlay == null) {
+            webView?.onResume()
+        }
+    }
+
+    override fun onPause() {
+        flushWebCookies()
+        if (!isGoogleAuthUrl(currentWebUrl) && !isGoogleAuthUrl(webView?.url)) {
+            pauseWebVideoPlayback()
+        }
+        super.onPause()
+    }
+
+    override fun onStop() {
+        flushWebCookies()
+        super.onStop()
+    }
+
     override fun onDestroy() {
         videoPromptRunnable?.let { mainHandler.removeCallbacks(it) }
         videoPromptRunnable = null
         closeOfflineVideoPlayer(resumeWeb = false)
+        flushWebCookies()
         customViewCallback?.onCustomViewHidden()
         customViewCallback = null
         customView = null

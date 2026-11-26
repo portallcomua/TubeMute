@@ -41,7 +41,7 @@
     <string name="btn_download_update">Обновить сейчас</string>
     <string name="btn_later">Позже</string>
     <string name="update_open_error">Не удалось открыть ссылку обновления.</string>
-    <string name="welcome_message">Выберите аккаунт Google на устройстве или продолжайте без входа.</string>
+    <string name="welcome_message">Выберите аккаунт Google на устройстве (1 нажатие, без пароля) или продолжайте без входа.</string>
     <string name="btn_continue_without_account">Продолжить без входа</string>
     <string name="guest_account_label">Устройство (без входа)</string>
     <string name="downloading_update">Загрузка обновления...</string>
@@ -73,6 +73,9 @@
     <string name="btn_url_short">URL</string>
     <string name="settings_pro_info">Купить PRO / О преимуществах</string>
     <string name="pro_info_title">TubeMute PRO</string>
-    <string name="pro_info_message">Аккаунт: %1$s\nСтатус: %2$s\n\nЧто даёт TubeMute PRO:\n• Просмотр YouTube без навязчивой рекламы на TV и смартфоне\n• Сохранение видео (MP4) на телефон для просмотра без интернета\n• Доступ для ваших устройств на этом email\n\nНажмите «Перейти к оплате» и укажите этот же email при оплате — PRO активируется автоматически.</string>
+    <string name="pro_info_message">Аккаунт: %1$s\nСтатус: %2$s\nСтоимость: %3$s\n\nЧто даёт TubeMute PRO:\n• Просмотр YouTube без навязчивой рекламы на TV и смартфоне\n• Сохранение видео (MP4) на телефон для просмотра без интернета\n• Доступ для ваших устройств на этом email\n\nНажмите «Перейти к оплате» и укажите этот же email при оплате — PRO активируется автоматически.</string>
+    <string name="pro_price_fallback">См. на странице оплаты</string>
     <string name="btn_go_to_payment">Перейти к оплате</string>
+    <string name="settings_reset_youtube_session">Сбросить вход YouTube (если зависла проверка)</string>
+    <string name="youtube_session_reset_done">Сессия YouTube очищена. Перезагружаем...</string>
 </resources>

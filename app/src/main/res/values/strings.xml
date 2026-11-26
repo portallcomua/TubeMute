@@ -41,7 +41,7 @@
     <string name="btn_download_update">Update now</string>
     <string name="btn_later">Later</string>
     <string name="update_open_error">Could not open the update link.</string>
-    <string name="welcome_message">Choose your device Google account or continue without signing in.</string>
+    <string name="welcome_message">Select your device Google account (1 tap, no password) or continue without signing in.</string>
     <string name="btn_continue_without_account">Continue without sign-in</string>
     <string name="guest_account_label">Device (no sign-in)</string>
     <string name="downloading_update">Downloading update...</string>
@@ -73,6 +73,9 @@
     <string name="btn_url_short">URL</string>
     <string name="settings_pro_info">PRO access &amp; details</string>
     <string name="pro_info_title">TubeMute PRO</string>
-    <string name="pro_info_message">Account: %1$s\nStatus: %2$s\n\nWhat TubeMute PRO includes:\n• Ad-free YouTube playback on TV and smartphone\n• Saving MP4 videos on phone for offline viewing without mobile data\n• Works across your devices linked to this email\n\nTap "Go to payment" below and use the same email at checkout — PRO activates automatically after payment.</string>
+    <string name="pro_info_message">Account: %1$s\nStatus: %2$s\nPrice: %3$s\n\nWhat TubeMute PRO includes:\n• Ad-free YouTube playback on TV and smartphone\n• Saving MP4 videos on phone for offline viewing without mobile data\n• Works across your devices linked to this email\n\nTap "Go to payment" below and use the same email at checkout — PRO activates automatically after payment.</string>
+    <string name="pro_price_fallback">Shown on checkout page</string>
     <string name="btn_go_to_payment">Go to payment</string>
+    <string name="settings_reset_youtube_session">Reset YouTube sign-in (if stuck)</string>
+    <string name="youtube_session_reset_done">YouTube session cleared. Reloading...</string>
 </resources>

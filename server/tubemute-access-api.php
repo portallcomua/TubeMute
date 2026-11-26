@@ -2,13 +2,13 @@
 /**
  * Plugin Name: TubeMute
  * Description: Central user, trial, device and PRO access management for TubeMute Android.
- * Version: 2.3.3
+ * Version: 2.4.1
  * Author: UA Server
  */
 if (!defined('ABSPATH')) { exit; }
 
 final class TubeMute {
-    const VERSION = '2.3.3';
+    const VERSION = '2.4.1';
     const DB_VERSION = '2';
     const GITHUB_REPO = 'portallcomua/TubeMute';
     const UPDATE_CACHE = 'tubemute_gh_release_cache';
@@ -45,6 +45,7 @@ final class TubeMute {
             'whitelist_emails' => '',
             'paybox_service_id' => 0,
             'product_name' => 'TubeMute PRO',
+            'pro_price_text' => '',
             'webhook_secret' => '',
             'freemius_secret' => '',
             'freemius_product_id' => '',
@@ -57,7 +58,8 @@ final class TubeMute {
     private static function is_whitelisted_email($email, $settings) {
         $raw = (string)($settings['whitelist_emails'] ?? '');
         if ($raw === '' || !$email) { return false; }
-        $items = preg_split('/[\s,;]+/', strtolower($raw));
+        $raw = preg_replace('/[\x{200B}-\x{200D}\x{FEFF}\x{00A0}]/u', ' ', $raw);
+        $items = preg_split('/[\s,;]+/u', strtolower((string)$raw));
         if (!is_array($items)) { return false; }
         $clean = strtolower(trim($email));
         return in_array($clean, $items, true);
@@ -222,16 +224,17 @@ final class TubeMute {
         $user = self::sync_paybox_license($user);
         $settings = self::settings();
         $payment_url = esc_url_raw($settings['payment_url']);
+        $price_text = (string)($settings['pro_price_text'] ?? '');
         $now = time();
 
         if ($user['status'] === 'blocked') {
-            return rest_ensure_response(['status' => 'blocked', 'payment_url' => $payment_url]);
+            return rest_ensure_response(['status' => 'blocked', 'payment_url' => $payment_url, 'price_text' => $price_text, 'plugin_version' => self::VERSION]);
         }
         if ((int)$user['lifetime'] === 1 || self::is_whitelisted_email($email, $settings)) {
-            return rest_ensure_response(['status' => 'licensed', 'until' => 'LIFETIME', 'payment_url' => $payment_url]);
+            return rest_ensure_response(['status' => 'licensed', 'until' => 'LIFETIME', 'payment_url' => $payment_url, 'price_text' => $price_text, 'plugin_version' => self::VERSION]);
         }
         if (!empty($user['access_until']) && self::timestamp($user['access_until']) > $now) {
-            return rest_ensure_response(['status' => 'licensed', 'until' => gmdate('Y-m-d', self::timestamp($user['access_until'])), 'payment_url' => $payment_url]);
+            return rest_ensure_response(['status' => 'licensed', 'until' => gmdate('Y-m-d', self::timestamp($user['access_until'])), 'payment_url' => $payment_url, 'price_text' => $price_text, 'plugin_version' => self::VERSION]);
         }
         $trial_until = self::timestamp($user['trial_until']);
         $remaining = $trial_until - $now;
@@ -250,7 +253,9 @@ final class TubeMute {
                 'status' => 'trial', 'days_left' => $days,
                 'trial_until' => gmdate('Y-m-d', $trial_until),
                 'show_reminder' => $notice,
-                'payment_url' => $payment_url
+                'payment_url' => $payment_url,
+                'price_text' => $price_text,
+                'plugin_version' => self::VERSION
             ]);
         }
         if (!(int)$user['expired_notice_sent']) {
@@ -259,7 +264,7 @@ final class TubeMute {
             global $wpdb;
             $wpdb->update(self::table(self::TABLE), ['expired_notice_sent' => 1, 'updated_at' => self::now_mysql()], ['id' => (int)$user['id']]);
         }
-        return rest_ensure_response(['status' => 'expired', 'payment_url' => $payment_url]);
+        return rest_ensure_response(['status' => 'expired', 'payment_url' => $payment_url, 'price_text' => $price_text, 'plugin_version' => self::VERSION]);
     }
 
     public static function webhook(WP_REST_Request $request) {
@@ -549,6 +554,7 @@ final class TubeMute {
             $settings['whitelist_emails'] = sanitize_textarea_field(wp_unslash($_POST['whitelist_emails'] ?? ''));
             $settings['paybox_service_id'] = absint($_POST['paybox_service_id'] ?? 0);
             $settings['product_name'] = sanitize_text_field(wp_unslash($_POST['product_name'] ?? 'TubeMute PRO'));
+            $settings['pro_price_text'] = sanitize_text_field(wp_unslash($_POST['pro_price_text'] ?? ''));
             $settings['webhook_secret'] = sanitize_text_field(wp_unslash($_POST['webhook_secret'] ?? ''));
             $settings['freemius_secret'] = sanitize_text_field(wp_unslash($_POST['freemius_secret'] ?? ''));
             $settings['freemius_product_id'] = sanitize_text_field(wp_unslash($_POST['freemius_product_id'] ?? ''));
@@ -579,14 +585,27 @@ final class TubeMute {
         if (isset($_POST['tm_action'], $_POST['user_id']) && check_admin_referer('tm_user_action')) {
             $id = absint($_POST['user_id']);
             $action = sanitize_key($_POST['tm_action']);
+            $notice_msg = '';
             if ($action === 'lifetime') {
                 $wpdb->update($users_table, ['lifetime'=>1,'access_until'=>null,'status'=>'active','source'=>'admin','updated_at'=>self::now_mysql()], ['id'=>$id]);
+                $notice_msg = 'Довічний PRO увімкнено.';
             } elseif ($action === 'revoke') {
-                $wpdb->update($users_table, ['lifetime'=>0,'access_until'=>self::date_mysql(time()-60),'status'=>'active','source'=>'admin_revoked','updated_at'=>self::now_mysql()], ['id'=>$id]);
+                $wpdb->update($users_table, ['lifetime'=>0,'access_until'=>null,'status'=>'active','source'=>'admin_revoked','updated_at'=>self::now_mysql()], ['id'=>$id]);
+                $notice_msg = 'PRO-доступ відкликано.';
+            } elseif ($action === 'end_trial') {
+                $wpdb->update($users_table, ['lifetime'=>0,'access_until'=>null,'trial_until'=>self::date_mysql(time()-60),'status'=>'active','source'=>'admin_trial_ended','updated_at'=>self::now_mysql()], ['id'=>$id]);
+                $notice_msg = 'Тестовий період завершено.';
             } elseif ($action === 'block' || $action === 'unblock') {
                 $wpdb->update($users_table, ['status'=>$action==='block'?'blocked':'active','updated_at'=>self::now_mysql()], ['id'=>$id]);
+                $notice_msg = $action === 'block' ? 'Користувача заблоковано.' : 'Користувача розблоковано.';
+            } elseif ($action === 'delete') {
+                $wpdb->delete(self::table(self::DEVICES), ['user_id' => $id], ['%d']);
+                $wpdb->delete($users_table, ['id' => $id], ['%d']);
+                $notice_msg = 'Користувача видалено.';
             }
-            echo '<div class="notice notice-success"><p>Зміни збережено.</p></div>';
+            if ($notice_msg !== '') {
+                echo '<div class="notice notice-success"><p>' . esc_html($notice_msg) . '</p></div>';
+            }
         }
         $settings = self::settings();
         $release = self::fetch_latest_github_release(false);
@@ -621,6 +640,7 @@ final class TubeMute {
         echo '<tr><th>Білий список email (довічний PRO)</th><td><textarea name="whitelist_emails" rows="4" class="large-text" placeholder="user@gmail.com">'.esc_textarea($settings['whitelist_emails']).'</textarea><p class="description">По одному email в рядок або через кому. Ці адреси завжди отримують довічний доступ PRO.</p></td></tr>';
         echo '<tr><th>ID проєкту UA Pay Box</th><td><input type="number" min="1" name="paybox_service_id" value="'.esc_attr($settings['paybox_service_id']).'"><p class="description">TubeMute автоматично перевіряє таблицю ліцензій UA Pay Box у цій самій базі WordPress. Код UA Pay Box змінювати не потрібно.</p></td></tr>';
         echo '<tr><th>Назва продукту</th><td><input type="text" class="regular-text" name="product_name" value="'.esc_attr($settings['product_name']).'"></td></tr>';
+        echo '<tr><th>Вартість PRO (текст для додатку)</th><td><input type="text" class="regular-text" name="pro_price_text" value="'.esc_attr($settings['pro_price_text']).'" placeholder="напр. 199 грн / рік або $4.99"><p class="description">Відображається в діалозі «Придбати PRO» в додатку (можна вказати тариф з UA Pay Box або Freemius).</p></td></tr>';
         echo '<tr><th>Секрет webhook</th><td><input type="password" class="regular-text" name="webhook_secret" value="'.esc_attr($settings['webhook_secret']).'" autocomplete="new-password"><p class="description">Для власного платіжного webhook із заголовком X-TubeMute-Secret.</p></td></tr>';
         echo '<tr><th>Freemius Secret Key</th><td><input type="password" class="regular-text" name="freemius_secret" value="'.esc_attr($settings['freemius_secret']).'" autocomplete="new-password"></td></tr>';
         echo '<tr><th>Freemius Product ID</th><td><input type="text" name="freemius_product_id" value="'.esc_attr($settings['freemius_product_id']).'"></td></tr>';
@@ -638,11 +658,32 @@ final class TubeMute {
         if (!$rows) { echo '<tr><td colspan="6">Поки немає користувачів.</td></tr>'; }
         foreach ($rows as $u) {
             $is_wl = self::is_whitelisted_email($u['email'], $settings);
-            $status = $u['status']==='blocked' ? 'Заблоковано' : (((int)$u['lifetime'] || $is_wl) ? 'Довічний PRO' : (!empty($u['access_until']) && self::timestamp($u['access_until'])>time() ? 'PRO' : (self::timestamp($u['trial_until'])>time() ? 'Тест' : 'Тест завершено')));
-            echo '<tr><td>'.esc_html($u['email']).'</td><td>'.esc_html($u['created_at']).'</td><td>'.esc_html($u['trial_until']).'</td><td>'.esc_html(((int)$u['lifetime'] || $is_wl)?'Довічно':($u['access_until']?:'—')).'</td><td>'.esc_html($status).'</td><td><form method="post" style="display:flex;gap:5px;flex-wrap:wrap">';
+            $has_lifetime = ((int)$u['lifetime'] === 1);
+            $has_paid_pro = !empty($u['access_until']) && self::timestamp($u['access_until']) > time();
+            $has_trial = self::timestamp($u['trial_until']) > time();
+            $status = $u['status'] === 'blocked'
+                ? 'Заблоковано'
+                : ($has_lifetime
+                    ? 'Довічний PRO'
+                    : ($is_wl
+                        ? 'Довічний PRO (білий список)'
+                        : ($has_paid_pro ? 'PRO' : ($has_trial ? 'Тест' : 'Тест завершено'))));
+            $pro_until = ($has_lifetime || $is_wl) ? 'Довічно' : ($has_paid_pro ? $u['access_until'] : '—');
+            $email_attr = esc_attr($u['email']);
+            echo '<tr><td>'.esc_html($u['email']).'</td><td>'.esc_html($u['created_at']).'</td><td>'.esc_html($u['trial_until']).'</td><td>'.esc_html($pro_until).'</td><td>'.esc_html($status).'</td><td><form method="post" style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">';
             wp_nonce_field('tm_user_action');
             echo '<input type="hidden" name="user_id" value="'.(int)$u['id'].'">';
-            echo '<button class="button" name="tm_action" value="lifetime">Довічно</button><button class="button" name="tm_action" value="revoke">Відкликати PRO</button><button class="button" name="tm_action" value="'.($u['status']==='blocked'?'unblock':'block').'">'.($u['status']==='blocked'?'Розблокувати':'Блокувати').'</button></form></td></tr>';
+            if (!$has_lifetime) {
+                echo '<button class="button button-primary" name="tm_action" value="lifetime">Довічно</button>';
+            }
+            if ($has_lifetime || $has_paid_pro) {
+                echo '<button class="button" name="tm_action" value="revoke">Відкликати PRO</button>';
+            } elseif ($has_trial && $u['status'] !== 'blocked') {
+                echo '<button class="button" name="tm_action" value="end_trial">Завершити тест</button>';
+            }
+            echo '<button class="button" name="tm_action" value="'.($u['status']==='blocked'?'unblock':'block').'">'.($u['status']==='blocked'?'Розблокувати':'Блокувати').'</button>';
+            echo '<button class="button button-link-delete" name="tm_action" value="delete" data-email="'.$email_attr.'" onclick="return confirm(\'Видалити користувача \' + this.getAttribute(\'data-email\') + \'?\');">Видалити</button>';
+            echo '</form></td></tr>';
         }
         echo '</tbody></table></div>';
     }
